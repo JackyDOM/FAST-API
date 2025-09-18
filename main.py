@@ -1,13 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from contextlib import asynccontextmanager
 import sqlite3
 import os
 import shutil
 import httpx
-from jose import jwt, JWTError
+from jose import jwt, JWTError, jwk
 
 # ---------------------------
 # Configuration for image storage
@@ -18,31 +18,37 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # ---------------------------
 # Keycloak Configuration
 # ---------------------------
-KEYCLOAK_SERVER_URL = "http://localhost:8080/auth/"
-KEYCLOAK_REALM = "myrealm"
+KEYCLOAK_SERVER_URL = "http://localhost:8081/realms/myrealm"
 KEYCLOAK_CLIENT_ID = "fastapi-client"
-KEYCLOAK_PUBLIC_KEY = None  # will be fetched
 
-def get_keycloak_public_key():
-    global KEYCLOAK_PUBLIC_KEY
-    if KEYCLOAK_PUBLIC_KEY:
-        return KEYCLOAK_PUBLIC_KEY
-
-    url = f"{KEYCLOAK_SERVER_URL}realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
+def get_keycloak_jwk():
+    """Fetch the first JWK from Keycloak JWKS endpoint."""
+    url = f"{KEYCLOAK_SERVER_URL}/protocol/openid-connect/certs"
     try:
         with httpx.Client() as client:
             resp = client.get(url)
             resp.raise_for_status()
-            data = resp.json()
-    except httpx.RequestError as e:
+            jwks = resp.json()
+        return jwks['keys'][0]  # take the first key
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Keycloak connection error: {str(e)}")
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=500, detail=f"Keycloak returned error: {str(e)}")
 
-    # Using the first key (production: handle kid properly)
-    x5c = data['keys'][0]['x5c'][0]
-    KEYCLOAK_PUBLIC_KEY = f"-----BEGIN CERTIFICATE-----\n{x5c}\n-----END CERTIFICATE-----"
-    return KEYCLOAK_PUBLIC_KEY
+def get_current_user(token: str = Header(...)):
+    if not token.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token format")
+    actual_token = token[len("Bearer "):]
+
+    jwk_data = get_keycloak_jwk()  # get the JWK from Keycloak
+    try:
+        payload = jwt.decode(
+            actual_token,
+            jwk_data,                  # pass the JWK directly
+            algorithms=["RS256"],
+            audience="account"
+        )
+        return payload
+    except JWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Keycloak token: {str(e)}")
 
 # ---------------------------
 # Models
@@ -54,6 +60,16 @@ class VillageCreate(BaseModel):
     gender: str
     dob: str  # YYYY-MM-DD
 
+class VillageResponse(BaseModel):
+    id: int
+    user_id: str
+    name_kh: str
+    name_en: str
+    age: int
+    gender: str
+    dob: str
+    image_path: Optional[str]
+
 # ---------------------------
 # Database helpers
 # ---------------------------
@@ -62,8 +78,6 @@ DB_FILE = "users.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    
-    # Create villages table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS villages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,42 +108,30 @@ app = FastAPI(
 )
 
 # ---------------------------
-# Keycloak Bearer dependency
+# Global exception handler
 # ---------------------------
-def get_current_user(token: str = Header(..., description="Enter JWT token as 'Bearer <token>'")):
-    if not token.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token format")
-    actual_token = token[len("Bearer "):]
-    try:
-        payload = jwt.decode(actual_token, get_keycloak_public_key(), algorithms=["RS256"], audience=KEYCLOAK_CLIENT_ID)
-        return payload  # contains 'sub', 'preferred_username', etc.
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Keycloak token")
-
-# ---------------------------
-# Exception handler
-# ---------------------------
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
     return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": "true", "message": "Fail", "data": None}
+        status_code=500,
+        content={"error": "true", "message": str(exc), "data": None}
     )
 
 # ---------------------------
 # Routes
 # ---------------------------
-@app.get("/village")
+@app.get("/village", response_model=List[VillageResponse])
 async def get_all_villages(user: dict = Depends(get_current_user)):
     user_id = user["sub"]
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     villages = conn.execute("SELECT * FROM villages WHERE user_id = ?", (user_id,)).fetchall()
     conn.close()
-    data = [dict(village) for village in villages]
-    return {"error": "false", "message": "Success", "data": data}
+    return [dict(v) for v in villages]
 
-@app.post("/village")
+@app.post("/village", response_model=VillageResponse)
 async def create_village(
     name_kh: str = Form(...),
     name_en: str = Form(...),
@@ -139,30 +141,29 @@ async def create_village(
     image: Optional[UploadFile] = File(None),
     user: dict = Depends(get_current_user)
 ):
-    village = VillageCreate(name_kh=name_kh, name_en=name_en, age=age, gender=gender, dob=dob)
     user_id = user["sub"]
 
     image_path = None
     if image:
         if not image.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
-        image_filename = f"{user_id}_{village.name_en}_{image.filename}"
+        image_filename = f"{user_id}_{name_en}_{image.filename}"
         image_path = os.path.join(UPLOAD_DIR, image_filename)
         with open(image_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
 
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
-    cursor = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         INSERT INTO villages (user_id, name_kh, name_en, age, gender, dob, image_path)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, village.name_kh, village.name_en, village.age, village.gender, village.dob, image_path))
+    """, (user_id, name_kh, name_en, age, gender, dob, image_path))
     conn.commit()
     village_id = cursor.lastrowid
     result = conn.execute("SELECT * FROM villages WHERE id = ?", (village_id,)).fetchone()
     conn.close()
-
-    return {"error": "false", "message": "Success", "data": dict(result)}
+    return dict(result)
 
 @app.delete("/village/{village_id}")
 async def delete_village(village_id: int, user: dict = Depends(get_current_user)):
