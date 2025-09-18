@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -7,6 +7,14 @@ from contextlib import asynccontextmanager
 import sqlite3
 from auth import get_password_hash, authenticate_user, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, DB_FILE, ALGORITHM, SECRET_KEY
 from jose import jwt, JWTError
+import os
+import shutil
+
+# ---------------------------
+# Configuration for image storage
+# ---------------------------
+UPLOAD_DIR = "uploads"  # Directory to store images
+os.makedirs(UPLOAD_DIR, exist_ok=True)  # Create uploads directory if it doesn't exist
 
 # ---------------------------
 # Models
@@ -36,14 +44,19 @@ class VillageCreate(BaseModel):
 # ---------------------------
 def init_db():
     conn = sqlite3.connect(DB_FILE)
-    conn.execute("""
+    cursor = conn.cursor()
+    
+    # Create users table
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             hashed_password TEXT NOT NULL
         )
     """)
-    conn.execute("""
+    
+    # Create villages table
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS villages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -52,9 +65,17 @@ def init_db():
             age INTEGER,
             gender TEXT,
             dob TEXT,
+            image_path TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
+    
+    # Check if image_path column exists and add it if not
+    cursor.execute("PRAGMA table_info(villages)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'image_path' not in columns:
+        cursor.execute("ALTER TABLE villages ADD COLUMN image_path TEXT")
+    
     conn.commit()
     conn.close()
 
@@ -133,14 +154,56 @@ async def login(user: UserLogin):
 
     return TokenResponse(error="false", message="Login success", token=access_token)
 
-@app.post("/village")
-async def create_village(village: VillageCreate, user_id: int = Depends(get_current_user)):
+@app.get("/village")
+async def get_all_villages(user_id: int = Depends(get_current_user)):
     conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row  # <-- ensure dict-like rows
+    conn.row_factory = sqlite3.Row  # Dict-like rows
+    villages = conn.execute("SELECT * FROM villages WHERE user_id = ?", (user_id,)).fetchall()
+    conn.close()
+
+    # Convert all rows to dict
+    data = [dict(village) for village in villages]
+
+    return {
+        "error": "false",
+        "message": "Success",
+        "data": data
+    }
+
+@app.post("/village")
+async def create_village(
+    name_kh: str = Form(...),
+    name_en: str = Form(...),
+    age: int = Form(...),
+    gender: str = Form(...),
+    dob: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+    user_id: int = Depends(get_current_user)
+):
+    # Create VillageCreate object from form data
+    village = VillageCreate(name_kh=name_kh, name_en=name_en, age=age, gender=gender, dob=dob)
+
+    # Validate image type if provided
+    if image:
+        if not image.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row  # Ensure dict-like rows
+
+    # Save image to filesystem if provided
+    image_path = None
+    if image:
+        image_filename = f"{user_id}_{village.name_en}_{image.filename}"
+        image_path = os.path.join(UPLOAD_DIR, image_filename)
+        with open(image_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+
+    # Insert village data into database
     cursor = conn.execute("""
-        INSERT INTO villages (user_id, name_kh, name_en, age, gender, dob)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (user_id, village.name_kh, village.name_en, village.age, village.gender, village.dob))
+        INSERT INTO villages (user_id, name_kh, name_en, age, gender, dob, image_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, village.name_kh, village.name_en, village.age, village.gender, village.dob, image_path))
     conn.commit()
     village_id = cursor.lastrowid
     result = conn.execute("SELECT * FROM villages WHERE id = ?", (village_id,)).fetchone()
@@ -150,6 +213,39 @@ async def create_village(village: VillageCreate, user_id: int = Depends(get_curr
         "error": "false",
         "message": "Success",
         "data": dict(result)
+    }
+
+@app.delete("/village/{village_id}")
+async def delete_village(village_id: int, user_id: int = Depends(get_current_user)):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+
+    # Check if village exists and belongs to user
+    village = conn.execute("SELECT * FROM villages WHERE id = ?", (village_id,)).fetchone()
+    if not village:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Village not found")
+
+    if village["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Not authorized to delete this village")
+
+    # Delete the image file if it exists
+    if village["image_path"]:
+        try:
+            os.remove(village["image_path"])
+        except FileNotFoundError:
+            pass  # Ignore if file doesn't exist
+
+    # Delete the village
+    conn.execute("DELETE FROM villages WHERE id = ?", (village_id,))
+    conn.commit()
+    conn.close()
+
+    return {
+        "error": "false",
+        "message": f"Village with id {village_id} deleted successfully",
+        "data": None
     }
 
 # ---------------------------
