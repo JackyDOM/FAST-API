@@ -173,6 +173,46 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     return login_user(request.username, request.email)
 
+@app.get("/users")
+async def get_all_users():
+    """
+    Get all users from Keycloak (no pagination in request).
+    """
+    admin_token = get_admin_token()
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Force Keycloak to return "all" by setting max to a large number
+    url = f"{KEYCLOAK_SERVER_URL}/admin/realms/{REALM}/users?first=0&max=9999"
+
+    response = httpx.get(url, headers=headers)
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch users: {response.text}")
+
+    return {
+        "error": False,
+        "message": "success",
+        "data": response.json()
+    }
+
+
+
+@app.delete("/user/{user_id}")
+async def delete_user_by_id(user_id: str):
+    """
+    Delete a user by their Keycloak user_id.
+    Requires admin token.
+    """
+    admin_token = get_admin_token()
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    url = f"{KEYCLOAK_SERVER_URL}/admin/realms/{REALM}/users/{user_id}"
+
+    response = httpx.delete(url, headers=headers)
+    if response.status_code not in (200, 204):
+        raise HTTPException(status_code=response.status_code, detail=f"Failed to delete user: {response.text}")
+
+    return {"error": False, "message": f"User {user_id} deleted successfully"}
+
+
 # ---------------------------
 # Village routes
 # ---------------------------
