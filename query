@@ -1,0 +1,84 @@
+query = text("""
+        WITH children AS (
+    SELECT
+        c.parent_code AS parent_code,
+        json_agg(
+            json_build_object(
+                'code', c.code,
+                'title', c.title,
+                'description', c.description,
+                'questions_by_age_group', COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'age_group', v.age_group,
+                                'questions', COALESCE(
+                                    (
+                                        SELECT json_agg(
+                                            json_build_object(
+                                                'code', q.unique_code,
+                                                'text', q.question,
+                                                'answers', COALESCE(
+                                                    (
+                                                        SELECT json_agg(
+                                                            json_build_object(
+                                                                'code', a.unique_code,
+                                                                'text', a.answer
+                                                            )
+                                                            ORDER BY a.unique_code
+                                                        )
+                                                        FROM answer a
+                                                        WHERE a.unique_code IN (
+                                                            SELECT answer_code
+                                                            FROM question_answer_view v2
+                                                            WHERE v2.question_code = q.unique_code
+                                                              AND v2.age_group = v.age_group
+                                                        )
+                                                    ),
+                                                    '[]'::json
+                                                )
+                                            )
+                                            ORDER BY q.unique_code
+                                        )
+                                        FROM question q
+                                        WHERE q.parent_code = CASE 
+                                                                  WHEN v.age_group = 'under_8_year_old' THEN c.code
+                                                                  WHEN v.age_group = 'over_8_year_old' THEN REPLACE(c.code, '_', '.') -- convert Q1_1 -> Q1.1
+                                                              END
+                                    ),
+                                    '[]'::json
+                                )
+                            )
+                            ORDER BY 
+                                CASE 
+                                    WHEN v.age_group = 'under_8_year_old' THEN 1
+                                    WHEN v.age_group = 'over_8_year_old' THEN 2
+                                    ELSE 3
+                                END
+                        )
+                        FROM (
+                            SELECT DISTINCT age_group
+                            FROM question_answer_view
+                            WHERE age_group = :age_group
+                        ) v
+                    ),
+                    '[]'::json
+                )
+            )
+            ORDER BY c.code
+        ) AS subtypes
+    FROM disability_type c
+    WHERE c.parent_code IS NOT NULL
+    GROUP BY c.parent_code
+)
+SELECT
+    dt.code AS disability_code,
+    dt.title,
+    dt.description,
+    COALESCE(ch.subtypes, '[]'::json) AS subtypes
+FROM disability_type dt
+LEFT JOIN children ch
+    ON ch.parent_code = dt.code
+WHERE dt.parent_code IS NULL
+ORDER BY CAST(SUBSTRING(dt.code FROM '[0-9]+') AS INT);
+    """)
