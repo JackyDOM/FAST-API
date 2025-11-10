@@ -1,0 +1,35 @@
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class AnswerItem(BaseModel):
+    """Schema representing a possible answer for a question."""
+    code: str = Field(..., description="Unique code identifying the answer")
+    text: Optional[str] = Field(None, description="Answer text content")
+
+class QuestionItem(BaseModel):
+    """Schema representing a question within a disability type."""
+    code: str = Field(..., description="Unique code identifying the question")
+    text: Optional[str] = Field(None, description="Question text content")
+    answers: List[AnswerItem] = Field(default_factory=list, description="List of possible answers for this question")
+
+class QuestionsByAgeGroup(BaseModel):
+    age_group: str
+    questions: List[QuestionItem] = Field(default_factory=list)
+
+class SubtypeItem(BaseModel):
+    """Schema representing a child disability type with questions."""
+    code: str = Field(..., description="Unique code identifying the child disability type")
+    title: Optional[str] = Field(None, description="Title of the child disability type")
+    description: Optional[str] = Field(None, description="Description of the child disability type")
+    questions_by_age_group: List[QuestionsByAgeGroup] = Field(default_factory=list)
+
+class DisabilityQuestionItem(BaseModel):
+    """Schema representing a parent disability type with child subtypes."""
+    disability_code: str = Field(..., description="Unique code identifying the disability type")
+    title: Optional[str] = Field(None, description="Title of the disability type")
+    description: Optional[str] = Field(None, description="Description of the disability type")
+    subtypes: List[SubtypeItem] = Field(default_factory=list)
+
+class DisabilityQuestionResponse(BaseModel):
+    """Response schema for the disability questions and answers endpoint."""
+    data: List[DisabilityQuestionItem] = Field(..., description="List of disability types with child subtypes and questions")
