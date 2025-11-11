@@ -1,0 +1,211 @@
+#models:
+from sqlalchemy import String, ForeignKey, Boolean, Integer
+from sqlalchemy.orm import Mapped, mapped_column
+
+from ..core.db.database import Base
+
+class QuestionAnswer(Base):
+    __tablename__ = "question_answer"
+
+    id: Mapped[int] = mapped_column(
+        "id",
+        autoincrement=True,
+        nullable=False,
+        unique=True,
+        primary_key=True,
+        init=False,
+    )
+
+    main_id: Mapped[int] = mapped_column(ForeignKey("main.id"), index=True, default=None, nullable=True)
+    question_code: Mapped[str] = mapped_column(ForeignKey("question.unique_code"), index=True, default=None)
+    answer_code: Mapped[str] = mapped_column(ForeignKey("answer.unique_code"), index=True, default=None)
+    category_code: Mapped[str] = mapped_column(ForeignKey("category_answer.code"), index=True, default=None)
+
+    status: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False) 
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) 
+
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), index=True, default=None, nullable=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), index=True, default=None, nullable=True)
+
+
+# v1:
+@router.post(
+    "/questionAnswer",
+    summary = "Question and Answer of Disability types",
+    description = "Get all Question and Answer that relate each other"
+)
+async def question_answer_disability_types(
+    QA_disability_type_data: QuestionAnswerCreate,
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)]
+) -> QuestionAnswerRead:
+    """
+    Create a Question-Answer record.
+
+    Args:
+        qa_data: QuestionAnswer creation data
+        keycloak_user: Authenticated user info from Keycloak
+        db: Async database session
+
+    Returns:
+        Created QuestionAnswer record
+    """
+    # Validate user
+    db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+    user_id = db_user["id"]
+
+    try:
+        # Convert request into internal schema with created_by
+        qa_internal = QuestionAnswerCreateInternal(
+            **QA_disability_type_data.dict(),
+            created_by=str(user_id)
+        )
+
+        # Create the QuestionAnswer record
+        created_qa = await crud_question_answer.create_question_answer(
+            db=db, 
+            qa_data=qa_internal
+        )
+
+        # Return only what QuestionAnswerRead expects
+        return QuestionAnswerRead(
+            id=created_qa.id,
+            main_id=created_qa.main_id,
+            question_code=created_qa.question_code,
+            answer_code=created_qa.answer_code,
+            category_code=created_qa.category_code
+            # created_at=created_qa.created_at
+        )
+
+    except ValueError as e:
+        # Raised when duplicate found in check_duplicate()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Failed to create QuestionAnswer"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create QuestionAnswer: {str(e)}"
+        )
+
+# crud
+from typing import List, Optional
+
+from fastcrud import FastCRUD
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models.question_answer import QuestionAnswer
+from ..schemas.question_answer import (
+    QuestionAnswerCreateInternal,
+    QuestionAnswerDelete,
+    QuestionAnswerUpdate,
+    QuestionAnswerUpdateInternal
+)
+class CRUDQuestionAnswer(FastCRUD[
+    QuestionAnswer,
+    QuestionAnswerCreateInternal,
+    QuestionAnswerUpdate,
+    QuestionAnswerUpdateInternal,
+    QuestionAnswerDelete,
+    None
+]):
+    """CRUD operations for QuestionAnswer model with custom methods"""
+
+    async def get_by_question(self, db: AsyncSession, question_code: str) -> List[QuestionAnswer]:
+        """Get all answers for a specific question."""
+        stmt = select(QuestionAnswer).where(
+            QuestionAnswer.question_code == question_code,
+            QuestionAnswer.is_deleted == False
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+    
+    async def get_by_answer(self, db: AsyncSession, answer_code: str) -> List[QuestionAnswer]:
+        """Get all question-answer links by answer ID."""
+        stmt = select(QuestionAnswer).where(
+            QuestionAnswer.answer_code == answer_code,
+            QuestionAnswer.is_deleted == False
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+    
+    # async def get_by_category(self, db: AsyncSession, category_code: str) -> List[QuestionAnswer]:
+    #     """Get all category by category_code"""
+    #     stmt = select(QuestionAnswer).where(
+    #         QuestionAnswer.category_code == category_code,
+    #         QuestionAnswer.is_deleted == False
+    #     )
+    #     result = await db.execute(stmt)
+    #     return result.scalars().all()
+    
+    async def get_by_main(self, db: AsyncSession, main_id: int) -> List[QuestionAnswer]:
+        """Get all question-answer links by main ID."""
+        stmt = select(QuestionAnswer).where(
+            QuestionAnswer.main_id == main_id,
+            QuestionAnswer.is_deleted == False
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+    
+
+    async def check_duplicate(
+        self,
+        db: AsyncSession,
+        question_code: str,
+        answer_code: str,
+        category_code: str,
+        main_id: Optional[int] = None,
+        exclude_id: Optional[int] = None
+    ) -> bool:
+        """Check if a question-answer pair already exists, optionally within a main record."""
+        stmt = select(QuestionAnswer).where(
+            QuestionAnswer.question_code == question_code,
+            QuestionAnswer.answer_code == answer_code,
+            QuestionAnswer.category_code == category_code,
+            QuestionAnswer.is_deleted == False
+        )
+
+        if main_id:
+            stmt = stmt.where(QuestionAnswer.main_id == main_id)
+
+        if exclude_id:
+            stmt = stmt.where(QuestionAnswer.id != exclude_id)
+
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none() is not None
+    
+    async def create_question_answer(
+        self,
+        db: AsyncSession,
+        qa_data: QuestionAnswerCreateInternal
+    ) -> QuestionAnswer:
+        """Create a new QuestionAnswer record with validation."""
+        if await self.check_duplicate(db, qa_data.question_code, qa_data.answer_code, qa_data.category_code, getattr(qa_data, "main_id", None)):
+            raise ValueError(
+                f"Question CODE {qa_data.question_code} with Answer CODE {qa_data.answer_code} and Category CODE {qa_data.category_code} already exists"
+                + (f" in Main ID {qa_data.main_id}" if getattr(qa_data, "main_id", None) else "")
+            )
+
+        return await self.create(db=db, object=qa_data)
+
+    async def update_status(
+        self,
+        db: AsyncSession,
+        record_id: int,
+        new_status: bool,
+        updated_by: Optional[int] = None
+    ) -> Optional[QuestionAnswer]:
+        """Update only the status of a question-answer link."""
+        update_data = QuestionAnswerUpdateInternal(status=new_status, updated_by=updated_by)
+        return await self.update(db=db, id=record_id, object=update_data)
+
+
+# Create the CRUD instance
+crud_question_answer = CRUDQuestionAnswer(QuestionAnswer)
