@@ -1,0 +1,497 @@
+# Full SQL – unchanged (already correct)
+FULL_DISABILITY_SQL = text("""
+WITH age_filter AS (
+    SELECT 
+        CAST(:age_group AS TEXT) AS target_age_group
+),
+children AS (
+    SELECT
+        c.parent_code AS parent_code,
+        json_agg(
+            json_build_object(
+                'code', c.code,
+                'title', c.title,
+                'description', c.description,
+                'questions_by_age_group', COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'age_group', v.age_group,
+                                'questions', COALESCE(
+                                    (
+                                        -- Deduplicate questions: pick one row per unique_code (prefer under_8 if both exist)
+                                        SELECT json_agg(
+                                            json_build_object(
+                                                'code', qd.unique_code,
+                                                'text', qd.question,
+                                                'main_category', COALESCE(qd.main_category_json, '[]'::json),
+                                                'question_by_category', COALESCE(qd.question_by_category_json, '[]'::json)
+                                            )
+                                            ORDER BY qd.unique_code
+                                        )
+                                        FROM (
+                                            SELECT DISTINCT ON (q.unique_code)
+                                                q.unique_code,
+                                                q.question,
+                                                -- Build main_category
+                                                (
+                                                    SELECT json_agg(
+                                                        json_build_object(
+                                                            'code', cq.code,
+                                                            'text', cq.category
+                                                        )
+                                                        ORDER BY cq.code
+                                                    )
+                                                    FROM category_question_view cqv_mc
+                                                    JOIN category_question cq
+                                                      ON cqv_mc.category_question_code = cq.code
+                                                    WHERE cqv_mc.question_code = q.unique_code
+                                                      AND (
+                                                          af.target_age_group IS NULL 
+                                                          OR cqv_mc.age_group = af.target_age_group
+                                                      )
+                                                ) AS main_category_json,
+                                                -- Build question_by_category with answers
+                                                (
+                                                    SELECT json_agg(
+                                                        json_build_object(
+                                                            'category', json_build_object(
+                                                                'text', cq2.category,
+                                                                'code', cq2.code
+                                                            ),
+                                                            'answers', COALESCE(answers_json.answers, '[]'::json)
+                                                        )
+                                                        ORDER BY cq2.code
+                                                    )
+                                                    FROM category_question_view cqv2
+                                                    JOIN category_question cq2
+                                                      ON cqv2.category_question_code = cq2.code
+                                                    LEFT JOIN LATERAL (
+                                                        SELECT json_agg(
+                                                            json_build_object(
+                                                                'code', a.unique_code,
+                                                                'text', a.answer
+                                                            )
+                                                            ORDER BY a.unique_code
+                                                        ) AS answers
+                                                        FROM question_answer_view qav
+                                                        JOIN answer a ON qav.answer_code = a.unique_code
+                                                        WHERE qav.question_code = q.unique_code
+                                                          AND qav.age_group = cqv2.age_group
+                                                          AND (
+                                                              af.target_age_group IS NULL 
+                                                              OR qav.age_group = af.target_age_group
+                                                          )
+                                                          AND EXISTS (
+                                                              SELECT 1
+                                                              FROM category_question_view cqv_link
+                                                              WHERE cqv_link.question_code = q.unique_code
+                                                                AND cqv_link.category_question_code = cqv2.category_question_code
+                                                                AND (
+                                                                    af.target_age_group IS NULL 
+                                                                    OR cqv_link.age_group = af.target_age_group
+                                                                )
+                                                          )
+                                                    ) answers_json ON TRUE
+                                                    WHERE cqv2.question_code = q.unique_code
+                                                      AND (
+                                                          af.target_age_group IS NULL 
+                                                          OR cqv2.age_group = af.target_age_group
+                                                      )
+                                                ) AS question_by_category_json,
+                                                q.parent_code,
+                                                cqv2.age_group
+                                            FROM question q
+                                            JOIN category_question_view cqv2 
+                                              ON cqv2.question_code = q.unique_code
+                                              AND (
+                                                  af.target_age_group IS NULL 
+                                                  OR cqv2.age_group = af.target_age_group
+                                              )
+                                            CROSS JOIN age_filter af
+                                            WHERE q.parent_code = CASE
+                                                WHEN cqv2.age_group = 'under_8_year_old' THEN c.code
+                                                WHEN cqv2.age_group = 'over_8_year_old'   THEN REPLACE(c.code, '_', '.')
+                                            END
+                                            ORDER BY q.unique_code, 
+                                                     CASE 
+                                                         WHEN cqv2.age_group = 'under_8_year_old' THEN 1 
+                                                         ELSE 2 
+                                                     END
+                                        ) qd
+                                    ),
+                                    '[]'::json
+                                )
+                            )
+                            ORDER BY
+                                CASE
+                                    WHEN v.age_group = 'under_8_year_old' THEN 1
+                                    WHEN v.age_group = 'over_8_year_old'   THEN 2
+                                    ELSE 3
+                                END
+                        )
+                        FROM (
+                            SELECT DISTINCT age_group
+                            FROM question_answer_view qav
+                            CROSS JOIN age_filter af
+                            WHERE af.target_age_group IS NULL 
+                               OR qav.age_group = af.target_age_group
+                        ) v
+                    ),
+                    '[]'::json
+                )
+            )
+            ORDER BY c.code
+        ) AS subtypes
+    FROM disability_type c
+    CROSS JOIN age_filter af
+    WHERE c.parent_code IS NOT NULL
+    GROUP BY c.parent_code
+)
+SELECT
+    dt.code AS disability_code,
+    dt.title,
+    dt.description,
+    COALESCE(ch.subtypes, '[]'::json) AS subtypes
+FROM disability_type dt
+LEFT JOIN children ch ON ch.parent_code = dt.code
+WHERE dt.parent_code IS NULL
+ORDER BY CAST(SUBSTRING(dt.code FROM '[0-9]+') AS INT);
+""")
+
+
+@router.get(
+    "/fully-question-answer-disability",
+    response_model=DisabilityCategoryQuestionResponse,
+    description="Get full disability questions with main_category and answers per category"
+)
+async def get_fully_disability_questions(
+    dob: Optional[str] = Query(None, description="Date of birth YYYY/MM/DD"),
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)] = None,
+    db: Annotated[AsyncSession, Depends(async_get_db)] = None
+):
+    if keycloak_user:
+        await validate_user(keycloak_user.username, keycloak_user, db)
+
+    # Default to 'under_8_year_old' if dob is not provided
+    age_group = calculate_age_group(dob) if dob else 'under_8_year_old'
+
+    result = await db.execute(FULL_DISABILITY_SQL, {"age_group": age_group})
+    rows = result.mappings().all()
+
+    return {"data": rows}
+
+
+
+
+
+
+
+
+
+
+
+C3 = C1 joing C2
+C6 = C4 join C5
+C9 = C7 join C8
+C12 = C10 join C11
+C15 = C13 join C14
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+===========================================
+# @router.get(
+#     "/fully-question-answer-disability",
+#     response_model=DisabilityCategoryQuestionResponse,
+#     description="",
+# )
+# async def get_fully_disability_questions(
+#     dob: Optional[str] = Query(None, description="Date of birth YYYY/MM/DD"),
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)] = None,
+#     db: Annotated[AsyncSession, Depends(async_get_db)] = None
+# ):
+#     # Validate user if authentication is required
+#     if keycloak_user:
+#         await validate_user(keycloak_user.username, keycloak_user, db)
+
+
+#      # Calculate age group from DOB
+#     age_group = calculate_age_group(dob) if dob else None
+
+
+#     # ✅ SQL query
+# #     query = text("""
+# # WITH children AS (
+# #     SELECT
+# #         c.parent_code AS parent_code,
+# #         json_agg(
+# #             json_build_object(
+# #                 'code', c.code,
+# #                 'title', c.title,
+# #                 'description', c.description,
+# #                 'questions_by_age_group', COALESCE(
+# #                     (
+# #                         SELECT json_agg(
+# #                             json_build_object(
+# #                                 'age_group', v.age_group,
+# #                                 'questions', COALESCE(
+# #                                     (
+# #                                         SELECT json_agg(
+# #                                             json_build_object(
+# #                                                 'code', q.unique_code,
+# #                                                 'text', q.question,
+                 
+
+                                    
+
+                                    
+
+
+# #                                                 'question_by_category', (
+# #                                                     SELECT json_agg(
+# #                                                         json_build_object(
+# #                                                             'category', cq.category,
+# #                                                             'answers', COALESCE(
+# #                                                                 (
+# #                                                                     SELECT json_agg(
+# #                                                                         json_build_object(
+# #                                                                             'code', a.unique_code,
+# #                                                                             'text', a.answer
+# #                                                                         )
+# #                                                                         ORDER BY a.unique_code
+# #                                                                     )
+# #                                                                     FROM answer a
+# #                                                                     JOIN question_answer_view v2
+# #                                                                       ON a.unique_code = v2.answer_code
+# #                                                                     WHERE v2.question_code = q.unique_code
+# #                                                                       AND v2.age_group = v.age_group
+# #                                                                 ),
+# #                                                                 '[]'::json
+# #                                                             )
+# #                                                         )
+# #                                                         ORDER BY cq.category
+# #                                                     )
+# #                                                     FROM (
+# #                                                         SELECT DISTINCT cqv.category_question_code, cqv.question_code
+# #                                                         FROM category_question_view cqv
+# #                                                         WHERE cqv.question_code = q.unique_code
+# #                                                     ) cqv_dist
+# #                                                     JOIN category_question cq
+# #                                                       ON cqv_dist.category_question_code = cq.code
+# #                                                 )
+# #                                             )
+# #                                             ORDER BY q.unique_code
+# #                                         )
+# #                                         FROM question q
+# #                                         WHERE q.parent_code = CASE 
+# #                                                                   WHEN v.age_group = 'under_8_year_old' THEN c.code
+# #                                                                   WHEN v.age_group = 'over_8_year_old' THEN REPLACE(c.code, '_', '.')
+# #                                                               END
+# #                                     ),
+# #                                     '[]'::json
+# #                                 )
+# #                             )
+# #                             ORDER BY 
+# #                                 CASE 
+# #                                     WHEN v.age_group = 'under_8_year_old' THEN 1
+# #                                     WHEN v.age_group = 'over_8_year_old' THEN 2
+# #                                     ELSE 3
+# #                                 END
+# #                         )
+# #                         FROM (
+# #                             SELECT DISTINCT age_group
+# #                             FROM question_answer_view
+# #                             WHERE (CAST(:age_group AS TEXT) IS NULL OR age_group = CAST(:age_group AS TEXT))
+# #                         ) v
+# #                     ),
+# #                     '[]'::json
+# #                 )
+# #             )
+# #             ORDER BY c.code
+# #         ) AS subtypes
+# #     FROM disability_type c
+# #     WHERE c.parent_code IS NOT NULL
+# #     GROUP BY c.parent_code
+# # )
+# # SELECT
+# #     dt.code AS disability_code,
+# #     dt.title,
+# #     dt.description,
+# #     COALESCE(ch.subtypes, '[]'::json) AS subtypes
+# # FROM disability_type dt
+# # LEFT JOIN children ch
+# #     ON ch.parent_code = dt.code
+# # WHERE dt.parent_code IS NULL
+# # ORDER BY CAST(SUBSTRING(dt.code FROM '[0-9]+') AS INT);
+# # """)
+
+
+#     result = await db.execute(query, {"age_group": age_group})
+#     data = result.mappings().all()
+
+#     return {"data": data}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+==================== (issue duplicate data)
+# Full SQL – unchanged (already correct)
+FULL_DISABILITY_SQL = text("""
+WITH children AS (
+    SELECT
+        c.parent_code AS parent_code,
+        json_agg(
+            json_build_object(
+                'code', c.code,
+                'title', c.title,
+                'description', c.description,
+                'questions_by_age_group', COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'age_group', v.age_group,
+                                'questions', COALESCE(
+                                    (
+                                        SELECT json_agg(
+                                            json_build_object(
+                                                'code', q.unique_code,
+                                                'text', q.question,
+                                                'main_category', COALESCE(
+                                                    (
+                                                        SELECT json_agg(
+                                                            json_build_object(
+                                                                'code', cq.code,
+                                                                'text', cq.category
+                                                            )
+                                                            ORDER BY cq.code
+                                                        )
+                                                        FROM category_question_view cqv_mc
+                                                        JOIN category_question cq
+                                                          ON cqv_mc.category_question_code = cq.code
+                                                        WHERE cqv_mc.question_code = q.unique_code
+                                                          AND (CAST(:age_group AS TEXT) IS NULL
+                                                               OR cqv_mc.age_group = CAST(:age_group AS TEXT))
+                                                    ),
+                                                    '[]'::json
+                                                ),
+                                                'question_by_category', COALESCE(
+                                                    (
+                                                        SELECT json_agg(
+                                                            json_build_object(
+                                                                'category', json_build_object(
+                                                                    'text', cq2.category,
+                                                                    'code', cq2.code
+                                                                ),
+                                                                'answers', COALESCE(
+                                                                    (
+                                                                        SELECT json_agg(
+                                                                            json_build_object(
+                                                                                'code', a.unique_code,
+                                                                                'text', a.answer
+                                                                            )
+                                                                            ORDER BY a.unique_code
+                                                                        )
+                                                                        FROM question_answer_view qav
+                                                                        JOIN answer a
+                                                                          ON qav.answer_code = a.unique_code
+                                                                        WHERE qav.question_code = q.unique_code
+                                                                          AND qav.age_group = v.age_group
+                                                                          AND EXISTS (
+                                                                              SELECT 1
+                                                                              FROM category_question_view cqv_link
+                                                                              WHERE cqv_link.question_code = q.unique_code
+                                                                                AND cqv_link.category_question_code = cqv2.category_question_code
+                                                                                AND (CAST(:age_group AS TEXT) IS NULL
+                                                                                     OR cqv_link.age_group = CAST(:age_group AS TEXT))
+                                                                          )
+                                                                    ),
+                                                                    '[]'::json
+                                                                )
+                                                            )
+                                                            ORDER BY cq2.code
+                                                        )
+                                                        FROM category_question_view cqv2
+                                                        JOIN category_question cq2
+                                                          ON cqv2.category_question_code = cq2.code
+                                                        WHERE cqv2.question_code = q.unique_code
+                                                          AND (CAST(:age_group AS TEXT) IS NULL
+                                                               OR cqv2.age_group = CAST(:age_group AS TEXT))
+                                                    ),
+                                                    '[]'::json
+                                                )
+                                            )
+                                            ORDER BY q.unique_code
+                                        )
+                                        FROM question q
+                                        WHERE q.parent_code = CASE
+                                            WHEN v.age_group = 'under_8_year_old' THEN c.code
+                                            WHEN v.age_group = 'over_8_year_old'   THEN REPLACE(c.code, '_', '.')
+                                        END
+                                    ),
+                                    '[]'::json
+                                )
+                            )
+                            ORDER BY
+                                CASE
+                                    WHEN v.age_group = 'under_8_year_old' THEN 1
+                                    WHEN v.age_group = 'over_8_year_old'   THEN 2
+                                    ELSE 3
+                                END
+                        )
+                        FROM (
+                            SELECT DISTINCT age_group
+                            FROM question_answer_view
+                            WHERE (CAST(:age_group AS TEXT) IS NULL
+                                   OR age_group = CAST(:age_group AS TEXT))
+                        ) v
+                    ),
+                    '[]'::json
+                )
+            )
+            ORDER BY c.code
+        ) AS subtypes
+    FROM disability_type c
+    WHERE c.parent_code IS NOT NULL
+    GROUP BY c.parent_code
+)
+SELECT
+    dt.code AS disability_code,
+    dt.title,
+    dt.description,
+    COALESCE(ch.subtypes, '[]'::json) AS subtypes
+FROM disability_type dt
+LEFT JOIN children ch ON ch.parent_code = dt.code
+WHERE dt.parent_code IS NULL
+ORDER BY CAST(SUBSTRING(dt.code FROM '[0-9]+') AS INT);
+""")
