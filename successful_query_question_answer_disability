@@ -166,3 +166,70 @@ async def get_fully_disability_questions(
     rows = result.mappings().all()
 
     return {"data": rows}
+
+
+
+
+================================
+This is schemas part
+================================
+
+# app/schemas/disability.py
+from typing import List, Optional, Union
+from pydantic import BaseModel, Field
+
+
+class AnswerItem(BaseModel):
+    code: str = Field(..., description="Answer code (e.g. A1)")
+    text: Optional[str] = Field(None, description="Answer text")
+
+
+class CategoryItem(BaseModel):
+    text: str = Field(..., description="Category name")
+    code: str = Field(..., description="Category code")
+
+
+# NEW: For nested answers inside C3
+class NestedAnswerItem(BaseModel):
+    category: CategoryItem
+    answers: List[AnswerItem]
+
+
+class QuestionCategoryItem(BaseModel):
+    category: CategoryItem
+    answers: Union[List[AnswerItem], List[NestedAnswerItem]]  # ← This fixes validation
+
+
+class MainCategoryItem(BaseModel):
+    code: str = Field(..., description="Category code")
+    text: str = Field(..., description="Category name")
+
+
+class QuestionItem(BaseModel):
+    code: str = Field(..., description="Question code")
+    text: Optional[str] = Field(None, description="Question text")
+    main_category: List[MainCategoryItem] = Field(default_factory=list)
+    question_by_category: List[QuestionCategoryItem] = Field(default_factory=list)
+
+
+class CategoryQuestionsByAgeGroup(BaseModel):
+    age_group: str
+    questions: List[QuestionItem] = Field(default_factory=list)
+
+
+class SubtypeItem(BaseModel):
+    code: str
+    title: Optional[str]
+    description: Optional[str]
+    questions_by_age_group: List[CategoryQuestionsByAgeGroup] = Field(default_factory=list)
+
+
+class DisabilityCategoryQuestionItem(BaseModel):
+    disability_code: str
+    title: Optional[str]
+    description: Optional[str]
+    subtypes: List[SubtypeItem] = Field(default_factory=list)
+
+
+class DisabilityCategoryQuestionResponse(BaseModel):
+    data: List[DisabilityCategoryQuestionItem]
