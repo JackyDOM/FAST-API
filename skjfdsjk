@@ -1,0 +1,113 @@
+"""create new main table
+
+Revision ID: b8d12752f95a
+Revises: 1c8e132af64c
+Create Date: 2025-11-21 05:05:13.514642
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers, used by Alembic.
+revision = 'b8d12752f95a'
+down_revision = '1c8e132af64c'
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(sa.text("SELECT to_regclass('public.main')"))
+    if result.scalar() is None:
+        # ### Create main table ###
+        op.create_table(
+            'main',
+            sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column('first_name', sa.String(length=50), nullable=False),
+            sa.Column('last_name', sa.String(length=50), nullable=False),
+            sa.Column('first_name_kh', sa.String(length=50), nullable=False),
+            sa.Column('last_name_kh', sa.String(length=50), nullable=False),
+            sa.Column('family_name', sa.String(length=50), nullable=True),
+            sa.Column('given_name', sa.String(length=50), nullable=True),
+            sa.Column('family_name_en', sa.String(length=50), nullable=True),
+            sa.Column('given_name_en', sa.String(length=50), nullable=True),
+            sa.Column('have_eq_card', sa.Boolean(), nullable=False),
+            sa.Column('eq_card', sa.String(length=200), nullable=False),
+            sa.Column('disability_date', sa.Date(), nullable=False),
+            sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', name='gender'), nullable=False),
+            sa.Column('national_id', sa.String(length=50), nullable=True),
+            sa.Column('family_code', sa.String(length=50), nullable=True),
+            sa.Column('phone_number', sa.String(length=50), nullable=True),
+            sa.Column('idpoor_id', sa.String(length=50), nullable=True),
+            sa.Column('family_code_idpoor', sa.String(length=50), nullable=True),
+            sa.Column('vacine_status', sa.String(length=50), nullable=True),
+            sa.Column('vacine_date', sa.String(length=50), nullable=True),
+            sa.Column('job', sa.String(length=100), nullable=True),
+            sa.Column('village_id', sa.String(length=50), nullable=False),
+            sa.Column('dob', sa.String(length=50), nullable=False),
+            sa.Column('live_with_who', sa.String(length=50), nullable=False),
+            sa.Column('reason_disability', sa.String(length=100), nullable=False),
+            sa.Column('year_start_disability', sa.String(length=50), nullable=False),
+            sa.Column('score_question', sa.Text(), nullable=False),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.Column('remarks', sa.Text(), nullable=True),
+            sa.Column('score_status_live', sa.String(length=50), nullable=True),
+            sa.Column('is_educated', sa.String(length=50), nullable=False),
+            sa.Column('education_level', sa.String(length=100), nullable=True),
+            sa.Column('have_income', sa.String(length=50), nullable=True),
+            sa.Column('primary_job', sa.String(length=100), nullable=True),
+            sa.Column('find_job', sa.String(length=50), nullable=True),
+            sa.Column('no_job_reason', sa.String(length=100), nullable=True),
+            sa.Column('no_job_reason_other', sa.String(length=100), nullable=True),
+            sa.Column('no_tvet_reason', sa.String(length=100), nullable=True),
+            sa.Column('is_tvet', sa.String(length=50), nullable=False),
+            sa.Column('daily_help', sa.String(length=100), nullable=True),
+            sa.Column('chronic_diseases', sa.String(length=100), nullable=True),
+            sa.Column('idpoor_status', sa.String(length=50), nullable=True),
+            sa.Column(
+                'status',
+                sa.Enum(
+                    'CA_REMOVED', 'CA_DRAFT', 'CC_PENDING', 'CC_APPROVED', 'CC_REJECTED',
+                    'SPR_PENDING', 'SPR_APPROVED', 'SPR_REJECTED', 'NSAF_PENDING', 'NSAF_APPROVED', 'NSAF_REJECTED',
+                    name='accountstatus'
+                ),
+                nullable=False
+            ),
+            sa.Column('gazetteer_code', sa.String(length=100), nullable=False),
+            sa.Column('spid', sa.String(length=50), nullable=True),
+            sa.Column('latitude', sa.String(length=50), nullable=True),
+            sa.Column('longitude', sa.String(length=50), nullable=True),
+            sa.Column('disability_photo', sa.String(length=255), nullable=True),
+            sa.Column('disability_photo_infor', sa.String(length=255), nullable=True),
+            sa.Column('disability_photo_path', sa.String(length=255), nullable=True),
+            sa.Column('disability_photo_doc', sa.String(length=255), nullable=True),
+            sa.Column('disability_getinfor', sa.String(length=50), nullable=True),
+            sa.Column('disability_name', sa.String(length=50), nullable=True),
+            sa.Column('submit_date', sa.Date(), nullable=True),
+            sa.Column('child_education_level', sa.String(length=50), nullable=True),
+            sa.Column('created_by', sa.String(length=50), nullable=True),
+            sa.Column('updated_by', sa.String(length=50), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('is_deleted', sa.Boolean(), nullable=False),
+            sa.ForeignKeyConstraint(['created_by'], ['user_profile.user_id_pwd']),
+            sa.ForeignKeyConstraint(['updated_by'], ['user_profile.user_id_pwd']),
+            sa.PrimaryKeyConstraint('id'),
+        )
+        op.create_index(op.f('ix_main_created_by'), 'main', ['created_by'], unique=False)
+        op.create_index(op.f('ix_main_updated_by'), 'main', ['updated_by'], unique=False)
+        # Only create FK if the target table exists
+        result_asset = conn.execute(sa.text("SELECT to_regclass('public.main_asset')"))
+        if result_asset.scalar() is not None:
+            op.create_foreign_key(None, 'main_asset', 'main', ['main_id'], ['id'])
+
+
+def downgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(sa.text("SELECT to_regclass('public.main')"))
+    if result.scalar() is not None:
+        op.drop_index(op.f('ix_main_updated_by'), table_name='main')
+        op.drop_index(op.f('ix_main_created_by'), table_name='main')
+        op.drop_table('main')
