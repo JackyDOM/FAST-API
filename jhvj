@@ -1,0 +1,402 @@
+"""create main table (fixed to add missing columns)
+
+Revision ID: 3e37cab8e4ef
+Revises: 32ac7a5479b8
+Create Date: 2025-11-22 13:26:02.657358
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers
+revision: str = '3e37cab8e4ef'
+down_revision: Union[str, None] = '32ac7a5479b8'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+
+    # 1️⃣ Create enums if they do not exist
+    # existing_types = {r[0] for r in conn.execute(
+    #     sa.text("SELECT typname FROM pg_type WHERE typname IN ('gender', 'accountstatus')")
+    # ).fetchall()}
+
+    # if 'gender' not in existing_types:
+    #     op.execute("CREATE TYPE gender AS ENUM ('MALE', 'FEMALE', 'OTHER')")
+    # if 'accountstatus' not in existing_types:
+    #     op.execute(
+    #         "CREATE TYPE accountstatus AS ENUM ("
+    #         "'CA_R','CA_DRAFT','CC_PENDING','CC_APPROVED','CC_REJECTED',"
+    #         "'SPR_PENDING','SPR_APPROVED','SPR_REJECTED','NSAF_PENDING','NSAF_APPROVED','NSAF_REJECTED')"
+    #     )
+
+    # 2️⃣ Create table if it doesn't exist
+    if not conn.dialect.has_table(conn, "main"):
+        op.create_table(
+            'main',
+            sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column('name', sa.String(100), nullable=False),
+            sa.Column('first_name', sa.String(50), nullable=False),
+            sa.Column('last_name', sa.String(50), nullable=False),
+            sa.Column('first_name_kh', sa.String(50), nullable=False),
+            sa.Column('last_name_kh', sa.String(50), nullable=False),
+            sa.Column('have_eq_card', sa.Boolean(), nullable=False),
+            sa.Column('eq_card', sa.String(200), nullable=False),
+            sa.Column('disability_date', sa.Date(), nullable=False),
+            sa.Column('gender', sa.Enum('MALE','FEMALE','OTHER', name='gender'), nullable=False),
+            sa.Column('family_name', sa.String(50), nullable=True),
+            sa.Column('given_name', sa.String(50), nullable=True),
+            sa.Column('family_name_en', sa.String(50), nullable=True),
+            sa.Column('given_name_en', sa.String(50), nullable=True),
+            sa.Column('national_id', sa.String(50), nullable=True),
+            sa.Column('family_code', sa.String(50), nullable=True),
+            sa.Column('phone_number', sa.String(50), nullable=True),
+            sa.Column('idpoor_id', sa.String(50), nullable=True),
+            sa.Column('family_code_idpoor', sa.String(50), nullable=True),
+            sa.Column('vacine_status', sa.String(50), nullable=True),
+            sa.Column('vacine_date', sa.String(50), nullable=True),
+            sa.Column('job', sa.String(100), nullable=True),
+            sa.Column('village_id', sa.String(50), nullable=False),
+            sa.Column('dob', sa.String(50), nullable=False),
+            sa.Column('live_with_who', sa.String(50), nullable=False),
+            sa.Column('reason_disability', sa.String(100), nullable=False),
+            sa.Column('year_start_disability', sa.String(50), nullable=False),
+            sa.Column('score_question', sa.Text(), nullable=False),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.Column('remarks', sa.Text(), nullable=True),
+            sa.Column('score_status_live', sa.String(50), nullable=True),
+            sa.Column('is_educated', sa.String(50), nullable=False),
+            sa.Column('education_level', sa.String(100), nullable=True),
+            sa.Column('have_income', sa.String(50), nullable=True),
+            sa.Column('primary_job', sa.String(100), nullable=True),
+            sa.Column('find_job', sa.String(50), nullable=True),
+            sa.Column('no_job_reason', sa.String(100), nullable=True),
+            sa.Column('no_job_reason_other', sa.String(100), nullable=True),
+            sa.Column('no_tvet_reason', sa.String(100), nullable=True),
+            sa.Column('is_tvet', sa.String(50), nullable=False),
+            sa.Column('daily_help', sa.String(100), nullable=True),
+            sa.Column('chronic_diseases', sa.String(100), nullable=True),
+            sa.Column('idpoor_status', sa.String(50), nullable=True),
+            sa.Column('status', sa.Enum(
+                'CA_REMOVED','CA_DRAFT','CC_PENDING','CC_APPROVED','CC_REJECTED',
+                'SPR_PENDING','SPR_APPROVED','SPR_REJECTED','NSAF_PENDING','NSAF_APPROVED','NSAF_REJECTED',
+                name='accountstatus'
+            ), nullable=False),
+            sa.Column('gazetteer_code', sa.String(100), nullable=False),
+            sa.Column('spid', sa.String(50), nullable=True),
+            sa.Column('latitude', sa.String(50), nullable=True),
+            sa.Column('longitude', sa.String(50), nullable=True),
+            sa.Column('disability_photo', sa.String(255), nullable=True),
+            sa.Column('disability_photo_infor', sa.String(255), nullable=True),
+            sa.Column('disability_photo_path', sa.String(255), nullable=True),
+            sa.Column('disability_photo_doc', sa.String(255), nullable=True),
+            sa.Column('disability_getinfor', sa.String(50), nullable=True),
+            sa.Column('disability_name', sa.String(50), nullable=True),
+            sa.Column('submit_date', sa.Date(), nullable=True),
+            sa.Column('child_education_level', sa.String(50), nullable=True),
+
+            sa.Column('created_by', sa.String(50), sa.ForeignKey('user_profile.user_id_pwd'), nullable=True, index=True),
+            sa.Column('updated_by', sa.String(50), sa.ForeignKey('user_profile.user_id_pwd'), nullable=True, index=True),
+
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('is_deleted', sa.Boolean(), nullable=False),
+        )
+
+        op.create_index(op.f('ix_main_created_by'), 'main', ['created_by'], unique=False)
+        op.create_index(op.f('ix_main_updated_by'), 'main', ['updated_by'], unique=False)
+
+
+        
+
+    else:
+        # 3️⃣ Table exists: add missing columns only
+        existing_columns = [col['name'] for col in inspector.get_columns('main')]
+
+        columns_to_add = [
+            sa.Column('name', sa.String(100), nullable=False),
+            sa.Column('first_name', sa.String(50), nullable=False),
+            sa.Column('last_name', sa.String(50), nullable=False),
+            sa.Column('first_name_kh', sa.String(50), nullable=False),
+            sa.Column('last_name_kh', sa.String(50), nullable=False),
+            sa.Column('have_eq_card', sa.Boolean(), nullable=False),
+            sa.Column('eq_card', sa.String(200), nullable=False),
+            sa.Column('disability_date', sa.Date(), nullable=False),
+            sa.Column('disability_photo', sa.String(255), nullable=True),
+            sa.Column('disability_photo_infor', sa.String(255), nullable=True),
+            sa.Column('disability_photo_path', sa.String(255), nullable=True),
+            sa.Column('disability_photo_doc', sa.String(255), nullable=True),
+            sa.Column('disability_getinfor', sa.String(50), nullable=True),
+            sa.Column('disability_name', sa.String(50), nullable=True),
+            sa.Column('submit_date', sa.Date(), nullable=True),
+            sa.Column('child_education_level', sa.String(50), nullable=True),
+        ]
+
+        for col in columns_to_add:
+            if col.name not in existing_columns:
+                op.add_column('main', col)
+
+
+def downgrade() -> None:
+    conn = op.get_bind()
+    if conn.dialect.has_table(conn, "main"):
+        op.drop_index(op.f('ix_main_updated_by'), table_name='main')
+        op.drop_index(op.f('ix_main_created_by'), table_name='main')
+        op.drop_table('main')
+    
+    op.execute("DROP TYPE IF EXISTS accountstatus")
+    op.execute("DROP TYPE IF EXISTS gender")
+
+
+
+
+
+=
+"""create new main table
+
+Revision ID: c6d064081725
+Revises: 9aa9ef379010
+Create Date: 2025-11-23 12:42:58.080198
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers, used by Alembic.
+revision: str = 'c6d064081725'
+down_revision: Union[str, None] = '9aa9ef379010'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('main',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('first_name', sa.String(length=50), nullable=False),
+    sa.Column('last_name', sa.String(length=50), nullable=False),
+    sa.Column('first_name_kh', sa.String(length=50), nullable=False),
+    sa.Column('last_name_kh', sa.String(length=50), nullable=False),
+    sa.Column('family_name', sa.String(length=50), nullable=True),
+    sa.Column('given_name', sa.String(length=50), nullable=True),
+    sa.Column('family_name_en', sa.String(length=50), nullable=True),
+    sa.Column('given_name_en', sa.String(length=50), nullable=True),
+    sa.Column('have_eq_card', sa.Boolean(), nullable=False),
+    sa.Column('eq_card', sa.String(length=200), nullable=False),
+    sa.Column('disability_date', sa.Date(), nullable=False),
+    sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', name='gender'), nullable=False),
+    sa.Column('national_id', sa.String(length=50), nullable=True),
+    sa.Column('family_code', sa.String(length=50), nullable=True),
+    sa.Column('phone_number', sa.String(length=50), nullable=True),
+    sa.Column('idpoor_id', sa.String(length=50), nullable=True),
+    sa.Column('family_code_idpoor', sa.String(length=50), nullable=True),
+    sa.Column('vacine_status', sa.String(length=50), nullable=True),
+    sa.Column('vacine_date', sa.String(length=50), nullable=True),
+    sa.Column('job', sa.String(length=100), nullable=True),
+    sa.Column('village_id', sa.String(length=50), nullable=False),
+    sa.Column('dob', sa.String(length=50), nullable=False),
+    sa.Column('live_with_who', sa.String(length=50), nullable=False),
+    sa.Column('reason_disability', sa.String(length=100), nullable=False),
+    sa.Column('year_start_disability', sa.String(length=50), nullable=False),
+    sa.Column('score_question', sa.Text(), nullable=False),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('remarks', sa.Text(), nullable=True),
+    sa.Column('score_status_live', sa.String(length=50), nullable=True),
+    sa.Column('is_educated', sa.String(length=50), nullable=False),
+    sa.Column('education_level', sa.String(length=100), nullable=True),
+    sa.Column('have_income', sa.String(length=50), nullable=True),
+    sa.Column('primary_job', sa.String(length=100), nullable=True),
+    sa.Column('find_job', sa.String(length=50), nullable=True),
+    sa.Column('no_job_reason', sa.String(length=100), nullable=True),
+    sa.Column('no_job_reason_other', sa.String(length=100), nullable=True),
+    sa.Column('no_tvet_reason', sa.String(length=100), nullable=True),
+    sa.Column('is_tvet', sa.String(length=50), nullable=False),
+    sa.Column('daily_help', sa.String(length=100), nullable=True),
+    sa.Column('chronic_diseases', sa.String(length=100), nullable=True),
+    sa.Column('idpoor_status', sa.String(length=50), nullable=True),
+    sa.Column('status', sa.Enum('CA_REMOVED', 'CA_DRAFT', 'CC_PENDING', 'CC_APPROVED', 'CC_REJECTED', 'SPR_PENDING', 'SPR_APPROVED', 'SPR_REJECTED', 'NSAF_PENDING', 'NSAF_APPROVED', 'NSAF_REJECTED', name='accountstatus'), nullable=False),
+    sa.Column('gazetteer_code', sa.String(length=100), nullable=False),
+    sa.Column('spid', sa.String(length=50), nullable=True),
+    sa.Column('latitude', sa.String(length=50), nullable=True),
+    sa.Column('longitude', sa.String(length=50), nullable=True),
+    sa.Column('disability_photo', sa.String(length=255), nullable=True),
+    sa.Column('disability_photo_infor', sa.String(length=255), nullable=True),
+    sa.Column('disability_photo_path', sa.String(length=255), nullable=True),
+    sa.Column('disability_photo_doc', sa.String(length=255), nullable=True),
+    sa.Column('disability_getinfor', sa.String(length=50), nullable=True),
+    sa.Column('disability_name', sa.String(length=50), nullable=True),
+    sa.Column('submit_date', sa.Date(), nullable=True),
+    sa.Column('child_education_level', sa.String(length=50), nullable=True),
+    sa.Column('created_by', sa.String(length=50), nullable=True),
+    sa.Column('updated_by', sa.String(length=50), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.ForeignKeyConstraint(['created_by'], ['user_profile.user_id_pwd'], ),
+    sa.ForeignKeyConstraint(['updated_by'], ['user_profile.user_id_pwd'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('id')
+    )
+    op.create_index(op.f('ix_main_created_by'), 'main', ['created_by'], unique=False)
+    op.create_index(op.f('ix_main_updated_by'), 'main', ['updated_by'], unique=False)
+    op.drop_index(op.f('ix_sub_disability_type_created_by'), table_name='sub_disability_type')
+    op.drop_index(op.f('ix_sub_disability_type_updated_by'), table_name='sub_disability_type')
+    op.drop_table('sub_disability_type')
+    op.alter_column('category_question', 'child_code',
+               existing_type=sa.VARCHAR(length=50),
+               nullable=False)
+    op.create_unique_constraint(None, 'category_question', ['child_code'])
+    op.create_unique_constraint(None, 'category_question', ['id'])
+    op.add_column('category_question_view', sa.Column('question_code', sa.String(length=50), nullable=False))
+    op.add_column('category_question_view', sa.Column('age_group', sa.String(), nullable=False))
+    op.create_index(op.f('ix_category_question_view_question_code'), 'category_question_view', ['question_code'], unique=False)
+    op.create_unique_constraint(None, 'category_question_view', ['id'])
+    op.create_foreign_key(None, 'category_question_view', 'question', ['question_code'], ['unique_code'])
+    op.alter_column('disability_type', 'image',
+               existing_type=sa.VARCHAR(length=255),
+               type_=sa.String(length=100),
+               existing_nullable=True)
+    op.create_foreign_key(None, 'main_asset', 'main', ['main_id'], ['id'])
+    op.alter_column('question_answer', 'question_code',
+               existing_type=sa.VARCHAR(),
+               nullable=False)
+    op.alter_column('question_answer', 'answer_code',
+               existing_type=sa.VARCHAR(),
+               nullable=False)
+    op.alter_column('question_answer', 'category_code',
+               existing_type=sa.VARCHAR(),
+               nullable=False)
+    op.drop_index(op.f('ix_question_answer_answer_id'), table_name='question_answer')
+    op.drop_index(op.f('ix_question_answer_question_id'), table_name='question_answer')
+    op.drop_constraint(op.f('question_answer_answer_id_fkey'), 'question_answer', type_='foreignkey')
+    op.drop_constraint(op.f('question_answer_question_id_fkey'), 'question_answer', type_='foreignkey')
+    op.create_foreign_key(None, 'question_answer', 'category_question', ['category_code'], ['code'])
+    op.create_foreign_key(None, 'question_answer', 'question', ['question_code'], ['unique_code'])
+    op.create_foreign_key(None, 'question_answer', 'answer', ['answer_code'], ['unique_code'])
+    op.create_foreign_key(None, 'question_answer', 'main', ['main_id'], ['id'])
+    op.drop_column('question_answer', 'question_id')
+    op.drop_column('question_answer', 'answer_id')
+    op.add_column('question_answer_view', sa.Column('question_code', sa.String(length=50), nullable=False))
+    op.add_column('question_answer_view', sa.Column('answer_code', sa.String(), nullable=False))
+    op.add_column('question_answer_view', sa.Column('age_group', sa.String(length=50), nullable=False))
+    op.drop_index(op.f('ix_question_answer_view_answer_id'), table_name='question_answer_view')
+    op.drop_index(op.f('ix_question_answer_view_question_id'), table_name='question_answer_view')
+    op.create_index(op.f('ix_question_answer_view_answer_code'), 'question_answer_view', ['answer_code'], unique=False)
+    op.create_index(op.f('ix_question_answer_view_question_code'), 'question_answer_view', ['question_code'], unique=False)
+    op.create_unique_constraint(None, 'question_answer_view', ['id'])
+    op.drop_constraint(op.f('question_answer_view_question_id_fkey'), 'question_answer_view', type_='foreignkey')
+    op.drop_constraint(op.f('question_answer_view_answer_id_fkey'), 'question_answer_view', type_='foreignkey')
+    op.create_foreign_key(None, 'question_answer_view', 'answer', ['answer_code'], ['unique_code'])
+    op.create_foreign_key(None, 'question_answer_view', 'question', ['question_code'], ['unique_code'])
+    op.drop_column('question_answer_view', 'question_id')
+    op.drop_column('question_answer_view', 'answer_id')
+    op.create_unique_constraint(None, 'sub_disability_types', ['id'])
+    op.add_column('tier', sa.Column('parent_code', sa.String(length=50), nullable=True))
+    op.add_column('tier', sa.Column('status', sa.Boolean(), nullable=False))
+    op.add_column('tier', sa.Column('is_deleted', sa.Boolean(), nullable=False))
+    op.add_column('tier', sa.Column('created_by', sa.Integer(), nullable=True))
+    op.add_column('tier', sa.Column('updated_by', sa.Integer(), nullable=True))
+    op.create_index(op.f('ix_tier_created_by'), 'tier', ['created_by'], unique=False)
+    op.create_index(op.f('ix_tier_updated_by'), 'tier', ['updated_by'], unique=False)
+    op.create_foreign_key(None, 'tier', 'user', ['created_by'], ['id'])
+    op.create_foreign_key(None, 'tier', 'user', ['updated_by'], ['id'])
+    op.create_unique_constraint(None, 'user_profile', ['id'])
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_constraint(None, 'user_profile', type_='unique')
+    op.drop_constraint(None, 'tier', type_='foreignkey')
+    op.drop_constraint(None, 'tier', type_='foreignkey')
+    op.drop_index(op.f('ix_tier_updated_by'), table_name='tier')
+    op.drop_index(op.f('ix_tier_created_by'), table_name='tier')
+    op.drop_column('tier', 'updated_by')
+    op.drop_column('tier', 'created_by')
+    op.drop_column('tier', 'is_deleted')
+    op.drop_column('tier', 'status')
+    op.drop_column('tier', 'parent_code')
+    op.drop_constraint(None, 'sub_disability_types', type_='unique')
+    op.add_column('question_answer_view', sa.Column('answer_id', sa.INTEGER(), autoincrement=False, nullable=False))
+    op.add_column('question_answer_view', sa.Column('question_id', sa.INTEGER(), autoincrement=False, nullable=False))
+    op.drop_constraint(None, 'question_answer_view', type_='foreignkey')
+    op.drop_constraint(None, 'question_answer_view', type_='foreignkey')
+    op.create_foreign_key(op.f('question_answer_view_answer_id_fkey'), 'question_answer_view', 'answer', ['answer_id'], ['id'])
+    op.create_foreign_key(op.f('question_answer_view_question_id_fkey'), 'question_answer_view', 'question', ['question_id'], ['id'])
+    op.drop_constraint(None, 'question_answer_view', type_='unique')
+    op.drop_index(op.f('ix_question_answer_view_question_code'), table_name='question_answer_view')
+    op.drop_index(op.f('ix_question_answer_view_answer_code'), table_name='question_answer_view')
+    op.create_index(op.f('ix_question_answer_view_question_id'), 'question_answer_view', ['question_id'], unique=False)
+    op.create_index(op.f('ix_question_answer_view_answer_id'), 'question_answer_view', ['answer_id'], unique=False)
+    op.drop_column('question_answer_view', 'age_group')
+    op.drop_column('question_answer_view', 'answer_code')
+    op.drop_column('question_answer_view', 'question_code')
+    op.add_column('question_answer', sa.Column('answer_id', sa.INTEGER(), autoincrement=False, nullable=False))
+    op.add_column('question_answer', sa.Column('question_id', sa.INTEGER(), autoincrement=False, nullable=False))
+    op.drop_constraint(None, 'question_answer', type_='foreignkey')
+    op.drop_constraint(None, 'question_answer', type_='foreignkey')
+    op.drop_constraint(None, 'question_answer', type_='foreignkey')
+    op.drop_constraint(None, 'question_answer', type_='foreignkey')
+    op.create_foreign_key(op.f('question_answer_question_id_fkey'), 'question_answer', 'question', ['question_id'], ['id'])
+    op.create_foreign_key(op.f('question_answer_answer_id_fkey'), 'question_answer', 'answer', ['answer_id'], ['id'])
+    op.create_index(op.f('ix_question_answer_question_id'), 'question_answer', ['question_id'], unique=False)
+    op.create_index(op.f('ix_question_answer_answer_id'), 'question_answer', ['answer_id'], unique=False)
+    op.alter_column('question_answer', 'category_code',
+               existing_type=sa.VARCHAR(),
+               nullable=True)
+    op.alter_column('question_answer', 'answer_code',
+               existing_type=sa.VARCHAR(),
+               nullable=True)
+    op.alter_column('question_answer', 'question_code',
+               existing_type=sa.VARCHAR(),
+               nullable=True)
+    op.drop_constraint(None, 'main_asset', type_='foreignkey')
+    op.alter_column('disability_type', 'image',
+               existing_type=sa.String(length=100),
+               type_=sa.VARCHAR(length=255),
+               existing_nullable=True)
+    op.drop_constraint(None, 'category_question_view', type_='foreignkey')
+    op.drop_constraint(None, 'category_question_view', type_='unique')
+    op.drop_index(op.f('ix_category_question_view_question_code'), table_name='category_question_view')
+    op.drop_column('category_question_view', 'age_group')
+    op.drop_column('category_question_view', 'question_code')
+    op.drop_constraint(None, 'category_question', type_='unique')
+    op.drop_constraint(None, 'category_question', type_='unique')
+    op.alter_column('category_question', 'child_code',
+               existing_type=sa.VARCHAR(length=50),
+               nullable=True)
+    op.create_table('sub_disability_type',
+    sa.Column('id', sa.INTEGER(), autoincrement=True, nullable=False),
+    sa.Column('title', sa.VARCHAR(length=100), autoincrement=False, nullable=False),
+    sa.Column('sub_disability_type_one', sa.VARCHAR(length=50), autoincrement=False, nullable=False),
+    sa.Column('sub_disability_type_two', sa.VARCHAR(length=50), autoincrement=False, nullable=False),
+    sa.Column('sub_disability_type_three', sa.VARCHAR(length=50), autoincrement=False, nullable=False),
+    sa.Column('sub_disability_type_four', sa.VARCHAR(length=50), autoincrement=False, nullable=False),
+    sa.Column('status', sa.BOOLEAN(), autoincrement=False, nullable=False),
+    sa.Column('created_by', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('updated_by', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), autoincrement=False, nullable=False),
+    sa.Column('updated_at', postgresql.TIMESTAMP(timezone=True), autoincrement=False, nullable=True),
+    sa.Column('deleted_at', postgresql.TIMESTAMP(timezone=True), autoincrement=False, nullable=True),
+    sa.Column('is_deleted', sa.BOOLEAN(), autoincrement=False, nullable=False),
+    sa.ForeignKeyConstraint(['created_by'], ['user.id'], name=op.f('sub_disability_type_created_by_fkey')),
+    sa.ForeignKeyConstraint(['updated_by'], ['user.id'], name=op.f('sub_disability_type_updated_by_fkey')),
+    sa.PrimaryKeyConstraint('id', name=op.f('sub_disability_type_pkey'))
+    )
+    op.create_index(op.f('ix_sub_disability_type_updated_by'), 'sub_disability_type', ['updated_by'], unique=False)
+    op.create_index(op.f('ix_sub_disability_type_created_by'), 'sub_disability_type', ['created_by'], unique=False)
+    op.drop_index(op.f('ix_main_updated_by'), table_name='main')
+    op.drop_index(op.f('ix_main_created_by'), table_name='main')
+    op.drop_table('main')
+    # ### end Alembic commands ###
