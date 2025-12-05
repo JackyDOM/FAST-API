@@ -1,0 +1,115 @@
+async def get_list_disabilities_commune(disability_params: dict) -> dict:
+    """
+    Get disabilities data for a commune from DMIS login response (like get_User_Profile_data)
+
+    Args:
+        disability_params (dict): parameters for filtering (can be empty if not used)
+
+    Returns:
+        dict: structured response containing all disability fields
+    """
+    try:
+        # Get login response from DMIS
+        login_response = await _get_dmis_token()
+
+        # Check if login failed
+        if login_response.get("error") is True:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Failed to authenticate with DMIS API"
+            )
+
+        # Extract the "data" field directly from login response
+        disabilities_data = login_response.get("data", {})
+
+        message = login_response.get("message", "Retrieved disabilities successfully")
+
+        return {
+            "success": True,
+            "data": disabilities_data,  # return all fields in "data"
+            "message": message,
+            "error": None
+        }
+
+    except aiohttp.ClientError as e:
+        await _handle_connection_error(e, SERVICE_DMIS_AUTH, disability_params)
+    except HTTPException:
+        raise
+    except Exception as e:
+        await _handle_unexpected_error(e, SERVICE_DMIS_AUTH, disability_params)
+
+
+
+
+==============
+
+# Request body model
+class UserDisabilityRequest(BaseModel):
+    user_id_pwd: str
+
+
+=================
+
+
+from ...schemas.main import UserDisabilityRequest
+from ...core.services.dmis_service import get_User_Profile_data, get_list_disabilities_commune
+from ...models.user_profile import UserProfile
+
+@router.post(
+    "/getdisabilities",
+    summary="Get Disabilities by User ID",
+    description="Search User ID in user_profile and return disabilities from DMIS API"
+)
+async def get_disabilities_by_user(
+    request: UserDisabilityRequest,
+    keycloak_user: Annotated[dict, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+):
+    
+    # Validate user
+    await validate_user(keycloak_user.username, keycloak_user, db)
+
+    try:
+        # Convert to string because user_id_pwd is VARCHAR in DB
+        user_id_pwd_str = str(request.user_id_pwd)
+
+        # 1. Get user from local database
+        stmt = select(UserProfile).where(UserProfile.user_id_pwd == user_id_pwd_str)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with user_id_pwd {user_id_pwd_str} not found"
+            )
+
+        # 2. Call DMIS API to get user's profile/disabilities
+        dmis_response = await get_list_disabilities_commune({"user_id_pwd": user.user_id_pwd})
+
+        
+
+        if dmis_response.get("error"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to get disabilities from DMIS API for user {user.user_id_pwd}"
+            )
+            
+
+        # 3. Return formatted response
+        return {
+            "error": False,
+            "message": "List of beneficiary members",
+            "disabilities": dmis_response.get("data")  # This should be the list of disabilities
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Return unexpected errors with a safe message
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+
