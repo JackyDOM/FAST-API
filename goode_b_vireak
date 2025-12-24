@@ -1,0 +1,379 @@
+
+from ...models.main_asset import MainAsset, AssetType
+from ...core.services.minio_service import MinioService
+from ...models.main import (
+    Main as MainModel,
+)
+@router.post(
+    "/insertdisability",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new disability member",
+    description="Create a new disability registration record following the external API format"
+)
+async def insert_disability(
+    # Authentication
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+    
+    # Personal Information - Khmer
+    disability_getinfor: Annotated[str, Form()],
+    disability_family_name: Annotated[str, Form()],
+    disability_given_name: Annotated[str, Form()],
+    disability_name: Annotated[str, Form()],
+    
+    # Personal Information - English
+    disability_family_name_en: Annotated[str, Form()],
+    disability_given_name_en: Annotated[str, Form()],
+    disability_name_eng: Annotated[str, Form()],
+    
+    # Basic Information
+    gender: Annotated[int, Form()],
+    national_id: Annotated[str, Form()],
+    family_code: Annotated[str, Form()],
+    phone_number: Annotated[str, Form()],
+    date_of_birth: Annotated[str, Form()],
+    
+    # ID Poor Information
+    idpoor_id: Annotated[str, Form()],
+    family_code_idpoor: Annotated[str, Form()],
+    idpoor_status: Annotated[str, Form()],
+    
+    # Vaccination Information
+    vacine_status: Annotated[int, Form()],
+    vacine_date: Annotated[str, Form()],
+    
+    # Location and Living Situation
+    village_id: Annotated[str, Form()],
+    job: Annotated[str, Form()],
+    live_with_who: Annotated[str, Form()],
+    
+    # Disability Information
+    reason_disability: Annotated[str, Form()],
+    year_start_disability: Annotated[int, Form()],
+    submit_date: Annotated[str, Form()],
+
+    # disability code
+    disability_code: Annotated[str, Form()],
+    
+    # Scoring Information
+    score_question: Annotated[str, Form()],
+
+    # Education Information
+    child_education_level: Annotated[str, Form()],
+    is_educated: Annotated[str, Form()],
+    education_level: Annotated[str, Form()],
+    
+    # Employment Information
+    have_income: Annotated[str, Form()],
+    primary_job: Annotated[str, Form()],
+    find_job: Annotated[str, Form()],
+    no_job_reason: Annotated[str, Form()],
+    no_job_reason_other: Annotated[str, Form()],
+    
+    # Training Information
+    no_tvet: Annotated[str, Form()],
+    is_tvet: Annotated[str, Form()],
+    
+    # Support Information
+    daily_help: Annotated[str, Form()],
+    chronic_diseases: Annotated[str, Form()],
+
+    # Asset Information
+    disability_photo: Annotated[UploadFile, Form()],
+    disability_photo_full: Annotated[UploadFile, Form()],
+
+    fp_right_photos: Annotated[list[UploadFile], Form()] = [],
+    fp_left_photos: Annotated[list[UploadFile], Form()] = [],
+    fp_right_metadatas: Annotated[list[str], Form()] = [],
+    fp_left_metadatas: Annotated[list[str], Form()] = [],
+
+    # Optional Related Documents (all optional)
+    family_book: Annotated[UploadFile | None, Form()] = None,  # សៀវភៅគ្រួសារ
+    residence_book: Annotated[UploadFile | None, Form()] = None,  # សៀវភៅស្នាក់នៅ
+    national_id_card: Annotated[UploadFile | None, Form()] = None,  # អត្តសញ្ញាណបណ្ណ
+    equity_card: Annotated[UploadFile | None, Form()] = None,  # បណ្ណសមធ័ម៌
+
+    # Optional parameters with defaults
+    score_status_live: Annotated[str, Form()] = "",
+
+) -> dict:
+        
+    # Validate local DB user
+    db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+    user_id = db_user["id"]
+
+    # Get user_id_pwd from UserProfile table (DMIS info)
+    user_profile = await crud_user_profile.get_by_user_id(db, user_id)
+    if not user_profile:
+        raise HTTPException(
+            status_code=404, 
+            detail="User profile with DMIS info not found. Please fetch /user-profile first."
+        )
+    user_profile_id = user_profile.id 
+    user_id_pwd = user_profile.user_id_pwd  # DMIS ID if needed
+
+    logger.debug("UserProfile ID: %s", user_profile_id)
+    logger.debug("UserProfile DMIS ID: %s", user_id_pwd)
+
+    # --- DUPLICATE VALIDATION ---
+    existing_record = await crud_main.get_by_disability_name(db, disability_name)
+    if existing_record:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"ជនមានពិការភាពជាមួយឈ្មោះ{disability_name} នេះបានចុះឈ្មោះរួចហើយ"
+        )
+    
+    try:
+        # Map gender integer to Gender enum
+        gender_mapping = {0: Gender.OTHER, 1: Gender.MALE, 2: Gender.FEMALE}
+        gender_enum = gender_mapping.get(gender, Gender.MALE)
+        
+        # Convert year_start_disability to a date (assuming January 1st of that year)
+        disability_date_val = date(year_start_disability, 1, 1) if year_start_disability else None
+        submit_date_val = datetime.strptime(submit_date, "%Y-%m-%d").date() if submit_date else None
+
+        # Create the registration data object
+        registration_data = MainModel(
+            gender=gender_enum,
+            national_id=national_id,
+            family_code=family_code,
+            name=disability_name_eng,
+            first_name=disability_given_name_en,
+            last_name=disability_family_name_en,
+            first_name_kh=disability_given_name,
+            last_name_kh=disability_family_name,
+            disability_date=disability_date_val,
+            family_name=disability_family_name,
+            given_name=disability_given_name,
+            family_name_en=disability_family_name_en,
+            given_name_en=disability_given_name_en,
+            phone_number=phone_number,
+            idpoor_id=idpoor_id,
+            family_code_idpoor=family_code_idpoor,
+            vacine_status=str(vacine_status),
+            vacine_date=vacine_date,
+            job=job,
+            village_id=village_id,
+            dob=date_of_birth,
+            live_with_who=live_with_who,
+            reason_disability=reason_disability,
+            year_start_disability=str(year_start_disability),
+            score_question=score_question,
+            score_status_live=score_status_live,
+            is_educated=is_educated,
+            education_level=education_level,
+            have_income=have_income,
+            primary_job=primary_job,
+            find_job=find_job,
+            no_job_reason=no_job_reason,
+            no_job_reason_other=no_job_reason_other,
+            no_tvet_reason=no_tvet, 
+            is_tvet=is_tvet,
+            daily_help=daily_help,
+            chronic_diseases=chronic_diseases,
+            idpoor_status=idpoor_status,
+            disability_getinfor=disability_getinfor,
+            disability_name=disability_name,
+            submit_date=submit_date_val,
+            child_education_level=child_education_level,
+            gazetteer_code=village_id,
+            created_by=user_id,
+        )
+
+        db.add(registration_data)
+        await db.flush()
+        
+        main_id = registration_data.id
+        logging.info(f"Created main record with ID: {main_id}")
+
+        single_photos = {
+            "disability_photo": (
+                disability_photo,
+                AssetType.DISABILITY_PHOTO,
+            ),
+            "disability_photo_full": (
+                disability_photo_full, 
+                AssetType.DISABILITY_PHOTO_FULL,
+            ),
+        }
+
+        for field_name, (file, asset_type) in single_photos.items():
+            if file:
+                try:
+                    # Read file content
+                    content = await file.read()
+
+                    # Generate path with UUID
+                    unique_id = str(uuid.uuid4())
+                    file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+                    # Upload to MinIO
+                    if settings.ENVIRONMENT == "local" and content:
+                        await MinioService.upload_file(
+                            file_content=content,
+                            file_name=file_path,
+                            content_type=file.content_type or "image/png",
+                        )
+
+                    # Create asset record using Pydantic model
+                    asset_data = MainAsset(
+                        main_id=main_id,
+                        attachment=file_path,
+                        type=asset_type,
+                    )
+
+                    db.add(asset_data)
+                    await db.flush()
+
+                except Exception as e:
+                    # Rollback the transaction if MinIO upload fails
+                    await db.rollback()
+                    raise e
+
+        # Handle optional related documents
+        if family_book or residence_book or national_id_card or equity_card:
+            related_docs = {
+                "family_book": (family_book, AssetType.FAMILY_BOOK),
+                "residence_book": (residence_book, AssetType.RESIDENCE_BOOK),
+                "national_id_card": (national_id_card, AssetType.NID),
+                "equity_card": (equity_card, AssetType.EQUITY_CARD),
+            }
+
+            for field_name, (file, asset_type) in related_docs.items():
+                if file:   
+                    try:
+                        # Read file content
+                        content = await file.read()
+
+                        # Generate path with UUID
+                        unique_id = str(uuid.uuid4())
+                        file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+                        # Upload to MinIO
+                        if settings.ENVIRONMENT == "local" and content:
+                            await MinioService.upload_file(
+                                file_content=content,
+                                file_name=file_path,
+                                content_type=file.content_type or "image/png",
+                            )
+
+                        # Create asset record using Pydantic model
+                        asset_data = MainAsset(
+                            main_id=main_id,
+                            attachment=file_path,
+                            type=asset_type,
+                        )
+
+                        db.add(asset_data)
+                        await db.flush()
+
+                    except Exception as e:
+                        # Rollback the transaction if MinIO upload fails
+                        await db.rollback()
+                        raise e
+
+        
+        # Handle multiple fingerprint photos
+        fingerprint_photos = {
+            "fp_right_photos": (fp_right_photos, AssetType.FP_RIGHT, fp_right_metadatas),
+            "fp_left_photos": (fp_left_photos, AssetType.FP_LEFT, fp_left_metadatas),
+        }
+        for field_name, (files, asset_type, metadata_list) in fingerprint_photos.items():
+            if files:
+                # Handle each file in the list
+                for index, file in enumerate(files):
+                    try:
+                        # Read file content
+                        content = await file.read()
+
+                        # Generate path with UUID
+                        unique_id = str(uuid.uuid4())
+                        file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+                        if settings.ENVIRONMENT == "local" and content:
+                            # Upload to MinIO
+                            await MinioService.upload_file(
+                                file_content=content,
+                                file_name=file_path,
+                                content_type=file.content_type or "image/png",
+                            )
+
+                        # Get metadata for this specific file
+                        file_metadata = None
+                        if metadata_list and index < len(metadata_list):
+                            metadata_string = metadata_list[index]
+                            # Validate that the metadata is valid JSON
+                            try:
+                                # Parse to validate JSON format
+                                json.loads(metadata_string)
+                                file_metadata = metadata_string
+                            except json.JSONDecodeError as e:
+                                logging.warning(
+                                    f"Invalid JSON metadata for {asset_type.name.lower()} "
+                                    f"photo {index}: {e}"
+                                )
+                                # Store as plain text if not valid JSON
+                                file_metadata = metadata_string
+
+                        new_asset = MainAsset(
+                            main_id=main_id,
+                            attachment=file_path,
+                            type=asset_type,
+                            remarks=file_metadata,
+                        )
+                        db.add(new_asset)
+                        await db.flush()
+
+                    except Exception as e:
+                        # Rollback the transaction if MinIO upload fails
+                        await db.rollback()
+                        raise e
+
+        # Commit the transaction if everything succeeded
+        await db.commit()
+        await db.refresh(registration_data)
+        
+        # Convert SQLAlchemy model to Pydantic schema before serializing
+        main_read_schema = MainRead.model_validate(registration_data)
+        
+        return {
+            "error": False,
+            "message": "success",
+            "data": main_read_schema.model_dump(by_alias=True)
+        }
+        
+    except Exception as e:
+        # Rollback on any error
+        await db.rollback()
+        
+        # Log the error for debugging
+        error_message = str(e)
+        logging.error(f"Error in create_member: {error_message}", exc_info=True)
+
+        # Check if it's an HTTPException and re-raise it
+        if isinstance(e, HTTPException):
+            raise
+        
+        # Check if it's a validation error and handle it gracefully
+        if "validation error" in error_message.lower() and "FmAccountMain" in error_message:
+            # This is a Pydantic validation error, provide user-friendly message
+            if "String should have at least" in error_message:
+                # Generic string length error
+                raise HTTPException(
+                    status_code=HTTPStatus.BAD_REQUEST, detail="សូមពិនិត្យបំពេញទិន្នន័យរបស់អ្នកឡើងវិញ ហើយព្យាយាមម្តងទៀត។"
+                )
+            else:
+                # Generic validation error
+                raise HTTPException(
+                    status_code=HTTPStatus.BAD_REQUEST, detail="សូមពិនិត្យបំពេញទិន្នន័យរបស់អ្នកឡើងវិញ ហើយព្យាយាមម្តងទៀត។"
+                )
+        else:
+            # Other types of errors
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=(
+                    "មានបញ្ហាបច្ចេកទេស សូមទាក់ទងជំនួយ។"
+                    if settings.ENVIRONMENT == "production"
+                    else f"Error creating main account: {error_message}"
+                ),
+            )
