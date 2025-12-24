@@ -1,0 +1,712 @@
+async def get_disability_dmis(disability_param: dict) -> dict:
+    try:
+        loging_response = await _get_dmis_token()
+
+        if loging_response.get("error"):
+            return {"error": True, "message": "Failed to authenticate with DMIS API"}
+        
+        token = loging_response.get("user", {}).get("token", "")
+        if not token:
+            return {"error": True, "message": "DMIS login did not return token."}
+        
+        body = {
+            "user_id": disability_param.get("user_id"),
+            "disability_getinfor": disability_param.get("disability_getinfor"),
+            "disability_family_name": disability_param.get("disability_family_name"),
+            "disability_given_name": disability_param.get("disability_given_name"),
+            "disability_name": disability_param.get("disability_name"),
+            "disability_family_name_en": disability_param.get("disability_family_name_en"),
+            "disability_given_name_en": disability_param.get("disability_given_name_en"),
+            "disability_name_eng": disability_param.get("disability_name_eng"),
+            "gender": disability_param.get("gender"),
+            "national_id": disability_param.get("national_id"),
+            "family_code": disability_param.get("family_code"),
+            "phone_number": disability_param.get("phone_number"),
+            "idpoor_id": disability_param.get("idpoor_id"),
+            "family_code_idpoor": disability_param.get("family_code_idpoor"),
+            "vacine_status": disability_param.get("vacine_status"),
+            "job": disability_param.get("job"),
+            "village_id": disability_param.get("village_id"),
+            "date_of_birth": disability_param.get("date_of_birth"),
+            "live_with_who": disability_param.get("live_with_who"),
+            "reason_disability": disability_param.get("reason_disability"),
+            "created_by": disability_param.get("created_by"),
+            "year_start_disability": disability_param.get("year_start_disability"),
+            "submit_date": disability_param.get("submit_date"),
+            "score_question": disability_param.get("score_question"),
+            "score_status_live": disability_param.get("score_status_live"),
+            "disability_photo": disability_param.get("disability_photo"),
+            "disability_photo_infor": disability_param.get("disability_photo_infor"),
+            "disability_photo_path": disability_param.get("disability_photo_path"),
+            "disability_photo_doc": disability_param.get("disability_photo_doc"),
+            "child_education_level": disability_param.get("child_education_level"),
+            "is_educated": disability_param.get("is_educated"),
+            "education_level": disability_param.get("education_level"),
+            "have_income": disability_param.get("have_income"),
+            "primary_job": disability_param.get("primary_job"),
+            "find_job": disability_param.get("find_job"),
+            "no_job_reason": disability_param.get("no_job_reason"),
+            "no_job_reason_other": disability_param.get("no_job_reason_other"),
+            "no_tvet": disability_param.get("no_tvet"),
+            "is_tvet": disability_param.get("is_tvet"),
+            "daily_help": disability_param.get("daily_help"),
+            "chronic_diseases": disability_param.get("chronic_diseases"),
+            "idpoor_id": disability_param.get("idpoor_id"),
+        }
+
+        url = f"{DMIS_API_BASE_URL}/disability/insertdisability"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body, headers=headers, timeout=30) as response:
+                dmis_response = await response.json()
+
+                if response.status == 400:
+                    return {
+                        "error": True,
+                        "message": "Request validate failed, please fill in all required fields!"
+                    }
+
+                if response.status == 404 or not dmis_response.get("disabilities"):
+                    return {
+                        "error": True,
+                        "message": "DATA NOT FOUND!"
+                    }
+
+                return dmis_response
+
+
+    except aiohttp.ClientError:
+        return {"error": True, "message": "Connection error while accessing DMIS API."}
+
+    except Exception as e:
+        return {"error": True, "message": f"Unexpected error: {str(e)}"}
+
+
+
+
+
+=================
+================
+
+
+# Directory to save uploaded files
+UPLOAD_DIR = Path("app/api/v1/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+async def save_upload_file(file: UploadFile, folder: Path) -> str:
+    if file is None:
+        return None
+    file_path = folder / file.filename   # save the file in the folder
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    return str(file_path)
+  # Store the file path as string
+
+@router.post(
+    "/insertdisability",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new disability member",
+    description="Create a new disability registration record following the external API format"
+)
+async def insert_disability(
+    # Personal Information - Khmer
+    disability_getinfor: Annotated[str, Form()],
+    disability_family_name: Annotated[str, Form()],
+    disability_given_name: Annotated[str, Form()],
+    disability_name: Annotated[str, Form()],
+    
+    # Personal Information - English
+    disability_family_name_en: Annotated[str, Form()],
+    disability_given_name_en: Annotated[str, Form()],
+    disability_name_eng: Annotated[str, Form()],
+    
+    # Basic Information
+    gender: Annotated[int, Form()],
+    national_id: Annotated[str, Form()],
+    family_code: Annotated[str, Form()],
+    phone_number: Annotated[str, Form()],
+    date_of_birth: Annotated[str, Form()],
+    
+    # ID Poor Information
+    idpoor_id: Annotated[str, Form()],
+    family_code_idpoor: Annotated[str, Form()],
+    idpoor_status: Annotated[str, Form()],
+    
+    # Vaccination Information
+    vacine_status: Annotated[int, Form()],
+    vacine_date: Annotated[str, Form()],
+    
+    # Location and Living Situation
+    village_id: Annotated[str, Form()],
+    job: Annotated[str, Form()],
+    live_with_who: Annotated[str, Form()],
+    
+    # Disability Information
+    reason_disability: Annotated[str, Form()],
+    year_start_disability: Annotated[int, Form()],
+    submit_date: Annotated[str, Form()],
+    
+    # Photo/Document Information
+    disability_photo: Annotated[UploadFile, Form()],
+    disability_photo_infor: Annotated[UploadFile, Form()],
+    disability_photo_path: Annotated[UploadFile, Form()],
+    disability_photo_doc: Annotated[UploadFile, Form()],
+    
+    # Education Information
+    child_education_level: Annotated[str, Form()],
+    is_educated: Annotated[str, Form()],
+    education_level: Annotated[str, Form()],
+    
+    # Employment Information
+    have_income: Annotated[str, Form()],
+    primary_job: Annotated[str, Form()],
+    find_job: Annotated[str, Form()],
+    no_job_reason: Annotated[str, Form()],
+    no_job_reason_other: Annotated[str, Form()],
+    
+    # Training Information
+    no_tvet: Annotated[str, Form()],
+    is_tvet: Annotated[str, Form()],
+    
+    # Support Information
+    daily_help: Annotated[str, Form()],
+    chronic_diseases: Annotated[str, Form()],
+    
+    # Authentication
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+    
+    # Optional parameters with defaults
+    score_status_live: Annotated[str, Form()] = "",
+
+    # Scoring Information
+    score_question: Annotated[Optional[str], Form()] = None,
+
+    # disability code
+    disability_code: Annotated[Optional[str], Form()] = None,
+    
+) -> dict:
+    
+    # Save uploaded files and get paths
+    disability_photo_path = await save_upload_file(disability_photo, UPLOAD_DIR)
+    disability_photo_infor_path = await save_upload_file(disability_photo_infor, UPLOAD_DIR)
+    disability_photo_doc_path = await save_upload_file(disability_photo_doc, UPLOAD_DIR)
+        
+    print("MainCreateInternal fields:", MainCreateInternal.model_fields.keys())
+    # Validate local DB user
+    db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+    user_id = db_user["id"]
+
+    # Get user_id_pwd from UserProfile table (DMIS info)
+    user_profile = await crud_user_profile.get_by_user_id(db, user_id)
+    if not user_profile:
+        raise HTTPException(
+            status_code=404, 
+            detail="User profile with DMIS info not found. Please fetch /user-profile first."
+        )
+    user_profile_id = user_profile.id 
+    user_id_pwd = user_profile.user_id_pwd  # DMIS ID if needed
+
+    print("UserProfile ID:", user_profile_id)
+    print("UserProfile DMIS ID:", user_id_pwd)
+
+
+    # --- DUPLICATE VALIDATION ---
+    existing_record = await crud_main.get_by_unique_fields(
+        db,
+        disability_getinfor=disability_getinfor,
+        disability_family_name=disability_family_name,
+        disability_given_name=disability_given_name,
+        disability_name=disability_name
+    )
+
+    if existing_record:
+        return {
+            "error": True,
+            "message": "duplicate_beneficiary",
+            "detail": "error save beneficiary"
+        }
+
+    try:
+        # Map gender integer to Gender enum
+        gender_mapping = {0: Gender.OTHER, 1: Gender.MALE, 2: Gender.FEMALE}
+        gender_enum = gender_mapping.get(gender, Gender.MALE)
+
+        # convert score_question to object
+        score_question_array = [
+            {"keyname": "Q1_1_1", "answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_2", "answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_3", "answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_4", "answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_5", "answer_code": "A2", "category": "C1"},
+            {"keyname": "Q1_1_6", "answer_code": "A2", "category": "C1"},
+            {"keyname": "Q1_1_7", "answer_code": "A2", "category": "C1"},
+        ]
+
+        # Decide: use frontend data or fallback to static
+        if score_question and score_question.strip():
+            try:
+                questions = json.loads(score_question) 
+                raw_json_to_save = score_question.strip()
+                print("Using score_question from frontend")
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in score_question: {e}")
+        else:
+            # Use default array
+            questions = score_question_array
+            raw_json_to_save = json.dumps(score_question_array)
+            print("No score_question from frontend → using default array")
+
+        # Convert year_start_disability to a date (assuming January 1st of that year)
+        disability_date_val = date(year_start_disability, 1, 1) if year_start_disability else None
+        submit_date_val = datetime.strptime(submit_date, "%Y-%m-%d").date() if submit_date else None
+
+
+        # --- CALL DMIS API TO GET ONLY disability_code ---
+        dmis_params = {
+            "disability_code": disability_code,
+
+        }
+
+        dmis_response = await get_disability_dmis(dmis_params)
+        disability_code_value = None
+        if not dmis_response.get("error"):
+            disability_code_value = dmis_response.get("data", {}).get("disability_code")
+
+        # Create the registration data object
+        registration_data = MainCreateInternal(
+            gender=gender_enum,
+            national_id=national_id,
+            family_code=family_code,
+
+            name=disability_name_eng,
+            first_name=disability_given_name_en,
+            last_name=disability_family_name_en,
+            first_name_kh=disability_given_name,
+            last_name_kh=disability_family_name,
+            disability_date=disability_date_val,
+
+            family_name=disability_family_name,
+            given_name=disability_given_name,
+            family_name_en=disability_family_name_en,
+            given_name_en=disability_given_name_en,
+
+            phone_number=phone_number,
+            idpoor_id=idpoor_id,
+            family_code_idpoor=family_code_idpoor,
+            vacine_status=str(vacine_status),
+            vacine_date=vacine_date,
+            job=job,
+            village_id=village_id,
+            dob=date_of_birth,
+            live_with_who=live_with_who,
+            reason_disability=reason_disability,
+            year_start_disability=str(year_start_disability),
+
+            score_question=raw_json_to_save,
+
+            score_status_live=score_status_live,
+            is_educated=is_educated,
+            education_level=education_level,
+            have_income=have_income,
+            primary_job=primary_job,
+            find_job=find_job,
+            no_job_reason=no_job_reason,
+            no_job_reason_other=no_job_reason_other,
+            no_tvet_reason=no_tvet, 
+            is_tvet=is_tvet,
+            daily_help=daily_help,
+            chronic_diseases=chronic_diseases,
+            idpoor_status=idpoor_status,
+            disability_getinfor=disability_getinfor,
+            disability_name=disability_name,
+            submit_date=submit_date_val,
+            child_education_level=child_education_level,
+
+            # disability_code=disability_code,
+
+            disability_code=disability_code_value,
+            
+            # Set required fields that don't directly map
+            gazetteer_code=village_id,  # Use village_id as gazetteer_code
+
+            # Save uploaded file paths
+            disability_photo=disability_photo_path,
+            disability_photo_infor=disability_photo_infor_path,
+            disability_photo_path=disability_photo_path,
+            disability_photo_doc=disability_photo_doc_path,
+
+            # Additional notes with unmapped fields
+            notes=f"Disability Registration - Name: {disability_name}, Name EN: {disability_name_eng}, GetInfo: {disability_getinfor}, Submit Date: {submit_date}, Photo: {disability_photo}, Photo Info: {disability_photo_infor}, Photo Path: {disability_photo_path}, Photo Doc: {disability_photo_doc}, Child Education: {child_education_level}",
+            
+            # created_by=int(user_profile.user_id),
+            created_by=user_id,
+        )
+        
+        # Create the main record in database
+        created_record = await crud_main.create(db=db, object=registration_data)
+
+        # Serialize the full DB record
+        record_data = MainRead.from_orm(created_record)
+
+        # Save the raw JSON string into main.score_question field
+        created_record.score_question = raw_json_to_save
+        await db.commit()
+        await db.refresh(created_record)
+
+        saved_count = 0
+        for q in questions:
+            keyname = q["keyname"]
+            answer_code = q["answer_code"]
+            category_code = q.get("category") or q.get("category_code")
+
+            question_answer_data = QuestionAnswerCreateInternal(
+                main_id=created_record.id,
+                question_code=keyname,
+                category_code=category_code,
+                answer_code=answer_code
+            )
+
+            await crud_question_answer.create_question_answer(db=db, qa_data=question_answer_data)
+            saved_count += 1
+
+        print(f"Inserted {saved_count} score answers into question_answer table")
+
+        return {
+            "error": False,
+            "message": "success",
+            "data": record_data.model_dump(by_alias=True)  # <- important
+        }
+
+
+
+
+================
+
+
+
+
+# @router.post(
+#     "/insertdisability",
+#     status_code=status.HTTP_201_CREATED,
+#     summary="Register a new disability member",
+#     description="Create a new disability registration record following the external API format"
+# )
+# async def insert_disability(
+#     # Personal Information - Khmer
+#     disability_getinfor: Annotated[str, Form()],
+#     disability_family_name: Annotated[str, Form()],
+#     disability_given_name: Annotated[str, Form()],
+#     disability_name: Annotated[str, Form()],
+    
+#     # Personal Information - English
+#     disability_family_name_en: Annotated[str, Form()],
+#     disability_given_name_en: Annotated[str, Form()],
+#     disability_name_eng: Annotated[str, Form()],
+    
+#     # Basic Information
+#     gender: Annotated[int, Form()],
+#     national_id: Annotated[str, Form()],
+#     family_code: Annotated[str, Form()],
+#     phone_number: Annotated[str, Form()],
+#     date_of_birth: Annotated[str, Form()],
+    
+#     # ID Poor Information
+#     idpoor_id: Annotated[str, Form()],
+#     family_code_idpoor: Annotated[str, Form()],
+#     idpoor_status: Annotated[str, Form()],
+    
+#     # Vaccination Information
+#     vacine_status: Annotated[int, Form()],
+#     vacine_date: Annotated[str, Form()],
+    
+#     # Location and Living Situation
+#     village_id: Annotated[str, Form()],
+#     job: Annotated[str, Form()],
+#     live_with_who: Annotated[str, Form()],
+    
+#     # Disability Information
+#     reason_disability: Annotated[str, Form()],
+#     year_start_disability: Annotated[int, Form()],
+#     submit_date: Annotated[str, Form()],
+#     disability_code: Annotated[str, Form()],
+    
+#     # Scoring Information
+#     score_question: Annotated[str, Form()],
+    
+#     # Photo/Document Information
+#     disability_photo: Annotated[UploadFile, Form()],
+#     disability_photo_infor: Annotated[UploadFile, Form()],
+#     disability_photo_path: Annotated[UploadFile, Form()],
+#     disability_photo_doc: Annotated[UploadFile, Form()],
+    
+#     # Education Information
+#     child_education_level: Annotated[str, Form()],
+#     is_educated: Annotated[str, Form()],
+#     education_level: Annotated[str, Form()],
+    
+#     # Employment Information
+#     have_income: Annotated[str, Form()],
+#     primary_job: Annotated[str, Form()],
+#     find_job: Annotated[str, Form()],
+#     no_job_reason: Annotated[str, Form()],
+#     no_job_reason_other: Annotated[str, Form()],
+    
+#     # Training Information
+#     no_tvet: Annotated[str, Form()],
+#     is_tvet: Annotated[str, Form()],
+    
+#     # Support Information
+#     daily_help: Annotated[str, Form()],
+#     chronic_diseases: Annotated[str, Form()],
+    
+#     # Authentication
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+    
+#     # Optional parameters with defaults
+#     score_status_live: Annotated[str, Form()] = "",
+# ) -> dict:
+    
+#     # Save uploaded files and get paths
+#     disability_photo_path = await save_upload_file(disability_photo, UPLOAD_DIR)
+#     disability_photo_infor_path = await save_upload_file(disability_photo_infor, UPLOAD_DIR)
+#     disability_photo_doc_path = await save_upload_file(disability_photo_doc, UPLOAD_DIR)
+        
+#     logger.debug("MainCreateInternal fields: %s", MainCreateInternal.model_fields.keys())
+#     # Validate local DB user
+#     db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#     user_id = db_user["id"]
+
+#     # Get user_id_pwd from UserProfile table (DMIS info)
+#     user_profile = await crud_user_profile.get_by_user_id(db, user_id)
+#     if not user_profile:
+#         raise HTTPException(
+#             status_code=404, 
+#             detail="User profile with DMIS info not found. Please fetch /user-profile first."
+#         )
+#     user_profile_id = user_profile.id  # <-- This is the user_profile table's PK
+#     user_id_pwd = user_profile.user_id_pwd  # DMIS ID if needed
+
+#     logger.debug("UserProfile ID: %s", user_profile_id)
+#     logger.debug("UserProfile DMIS ID: %s", user_id_pwd)
+
+#     # --- DUPLICATE VALIDATION ---
+#     existing_record = await crud_main.get_by_created_by(db, user_id)
+#     if existing_record:
+#         raise HTTPException(
+#             status_code=status.HTTP_409_CONFLICT,
+#             detail=f"A disability registration already exists for user_id {user_id_pwd}."
+#         )
+    
+#     try:
+#         # Map gender integer to Gender enum
+#         gender_mapping = {0: Gender.OTHER, 1: Gender.MALE, 2: Gender.FEMALE}
+#         gender_enum = gender_mapping.get(gender, Gender.MALE)
+
+        
+#         # Convert year_start_disability to a date (assuming January 1st of that year)
+#         disability_date_val = date(year_start_disability, 1, 1) if year_start_disability else None
+#         submit_date_val = datetime.strptime(submit_date, "%Y-%m-%d").date() if submit_date else None
+
+
+#         # Create the registration data object
+#         registration_data = MainCreateInternal(
+#             # Map disability form fields to Main model fields
+#             # family_name=disability_family_name,
+#             # given_name=disability_given_name,
+#             # family_name_en=disability_family_name_en,
+#             # given_name_en=disability_given_name_en,
+#             gender=gender_enum,
+#             national_id=national_id,
+#             family_code=family_code,
+
+#             name=disability_name_eng,
+#             first_name=disability_given_name_en,
+#             last_name=disability_family_name_en,
+#             first_name_kh=disability_given_name,
+#             last_name_kh=disability_family_name,
+#             disability_date=disability_date_val,
+
+#             family_name=disability_family_name,
+#             given_name=disability_given_name,
+#             family_name_en=disability_family_name_en,
+#             given_name_en=disability_given_name_en,
+
+
+#             phone_number=phone_number,
+#             idpoor_id=idpoor_id,
+#             family_code_idpoor=family_code_idpoor,
+#             vacine_status=str(vacine_status),
+#             vacine_date=vacine_date,
+#             job=job,
+#             village_id=village_id,
+#             dob=date_of_birth,
+#             live_with_who=live_with_who,
+#             reason_disability=reason_disability,
+#             year_start_disability=str(year_start_disability),
+#             score_question=score_question,
+#             score_status_live=score_status_live,
+#             is_educated=is_educated,
+#             education_level=education_level,
+#             have_income=have_income,
+#             primary_job=primary_job,
+#             find_job=find_job,
+#             no_job_reason=no_job_reason,
+#             no_job_reason_other=no_job_reason_other,
+#             no_tvet_reason=no_tvet, 
+#             is_tvet=is_tvet,
+#             daily_help=daily_help,
+#             chronic_diseases=chronic_diseases,
+#             idpoor_status=idpoor_status,
+#             disability_getinfor=disability_getinfor,
+#             disability_name=disability_name,
+#             submit_date=submit_date_val,
+#             child_education_level=child_education_level,
+
+#             disability_code=disability_code,
+            
+#             # Set required fields that don't directly map
+#             gazetteer_code=village_id,  # Use village_id as gazetteer_code
+
+#             # Save uploaded file paths
+#             disability_photo=disability_photo_path,
+#             disability_photo_infor=disability_photo_infor_path,
+#             disability_photo_path=disability_photo_path,
+#             disability_photo_doc=disability_photo_doc_path,
+
+
+#             # Additional notes with unmapped fields
+#             notes=f"Disability Registration - Name: {disability_name}, Name EN: {disability_name_eng}, GetInfo: {disability_getinfor}, Submit Date: {submit_date}, Photo: {disability_photo}, Photo Info: {disability_photo_infor}, Photo Path: {disability_photo_path}, Photo Doc: {disability_photo_doc}, Child Education: {child_education_level}",
+            
+
+#             # created_by=int(user_profile.user_id),
+#             created_by=user_id,
+#         )
+        
+#         # Create the main record in database
+#         created_record = await crud_main.create(db=db, object=registration_data)
+
+#         # Serialize the full DB record
+#         record_data = MainRead.from_orm(created_record)
+
+
+#         # Step loop score_question
+#         # convert score_question to object
+
+#         score_question_array = [
+#             {"keyname": "Q1_1_1", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_2", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_3", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_4", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_5", "answer_code": "A2", "category": "C1"},
+#             {"keyname": "Q1_1_6", "answer_code": "Ä2", "category": "C1"},
+#             {"keyname": "Q1_1_7", "answer_code": "A2", "category": "C1"},
+#         ]
+
+
+#         # Decide: use frontend data or fallback to static
+#         if score_question and score_question.strip():
+#             try:
+#                 questions = json.loads(score_question)
+#                 if not isinstance(questions, list):
+#                     raise ValueError("score_question must be a JSON array")
+#                 raw_json_to_save = score_question.strip()
+#                 logging.debug("Using score_question from frontend")
+#             except json.JSONDecodeError as e:
+#                 raise HTTPException(status_code=400, detail=f"Invalid JSON in score_question: {e}")
+#         else:
+#             questions = score_question_array
+#             raw_json_to_save = json.dumps(score_question_array)  # Convert static list → JSON string
+#             logging.debug("No score_question provided → using static default answers")
+
+#         # Save the raw JSON string into main.score_question field
+#         created_record.score_question = raw_json_to_save
+#         await db.commit()
+#         await db.refresh(created_record)
+
+#         saved_count = 0
+#         for q in questions:
+#             keyname = q["keyname"]
+#             answer_code = q["answer_code"]
+#             category_code = q.get("category") or q.get("category_code")
+
+#             question_answer_data = QuestionAnswerCreateInternal(
+#                 main_id=created_record.id,
+#                 question_code=keyname,
+#                 category_code=category_code,
+#                 answer_code=answer_code
+#             )
+
+#             await crud_question_answer.create_question_answer(db=db, qa_data=question_answer_data)
+#             saved_count += 1
+
+#         logging.debug(f"Inserted {saved_count} score answers into question_answer table")
+
+#         # questions = [{"keyname":"Q1_4_1","keyscore":1, "answer_code": "A1", "category_code": "C1"},{"keyname":"Q1_4_6","keyscore":3, "answer_code": "A2", "category_code": "C2"}]
+
+#         # for q in questions:
+#         #     keyname = q["keyname"]
+#         #     answer_code = q["answer_code"]
+#         #     category_code = q["category_code"]
+#         #     crud_question_answer_data = QuestionAnswerInternal(
+#         #         main_id=created_record.id,
+#         #         question_code=keyname,
+#         #         category_code=category_code,
+#         #         answer_code=answer_code
+#         #     )
+
+#         #     question_answer_created_record = await crud_question_answer.create(db=db, object=crud_question_answer_data)
+
+        
+        
+#         # return {
+#         #     "message": f"Disability registration created successfully for {disability_name_eng}",
+#         #     "disability_id": created_record.id,
+#         #     "status": "registered",
+#         #     "record_id": created_record.id,
+#         #     "user_id": user_id_pwd,
+#         #     "created_by": str(user_id_pwd)
+#         # }
+
+#         return {
+#             "error": False,
+#             "message": "success",
+#             "data": record_data.model_dump(by_alias=True)  # <- important
+#         }
+        
+#     except ValueError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=str(e)
+#         )
+#     except IntegrityError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_409_CONFLICT,
+#             detail=f"Database integrity error - possibly duplicate national ID: {str(e)}"
+#         )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to create disability registration: {str(e)}"
+#         )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Database integrity error - possibly duplicate national ID: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create disability registration: {str(e)}"
+        )
