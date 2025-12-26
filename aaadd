@@ -1,0 +1,907 @@
+# @router.post(
+#     "/insertdisability",
+#     status_code=status.HTTP_201_CREATED,
+#     summary="Register a new disability member",
+#     description="Create a new disability registration record following the external API format"
+# )
+# async def insert_disability(
+#     # Personal Information - Khmer
+#     disability_getinfor: Annotated[str, Form()],
+#     disability_family_name: Annotated[str, Form()],
+#     disability_given_name: Annotated[str, Form()],
+#     disability_name: Annotated[str, Form()],
+    
+#     # Personal Information - English
+#     disability_family_name_en: Annotated[str, Form()],
+#     disability_given_name_en: Annotated[str, Form()],
+#     disability_name_eng: Annotated[str, Form()],
+    
+#     # Basic Information
+#     gender: Annotated[int, Form()],
+#     national_id: Annotated[str, Form()],
+#     family_code: Annotated[str, Form()],
+#     phone_number: Annotated[str, Form()],
+#     date_of_birth: Annotated[str, Form()],
+    
+#     # ID Poor Information
+#     idpoor_id: Annotated[str, Form()],
+#     family_code_idpoor: Annotated[str, Form()],
+#     idpoor_status: Annotated[str, Form()],
+    
+#     # Vaccination Information
+#     vacine_status: Annotated[int, Form()],
+#     vacine_date: Annotated[str, Form()],
+    
+#     # Location and Living Situation
+#     village_id: Annotated[str, Form()],
+#     job: Annotated[str, Form()],
+#     live_with_who: Annotated[str, Form()],
+    
+#     # Disability Information
+#     reason_disability: Annotated[str, Form()],
+#     year_start_disability: Annotated[int, Form()],
+#     submit_date: Annotated[str, Form()],
+#     disability_code: Annotated[str, Form()],
+    
+#     # Scoring Information
+#     score_question: Annotated[str, Form()],
+    
+#     # Photo/Document Information
+#     disability_photo: Annotated[UploadFile, Form()],
+#     disability_photo_infor: Annotated[UploadFile, Form()],
+#     disability_photo_path: Annotated[UploadFile, Form()],
+#     disability_photo_doc: Annotated[UploadFile, Form()],
+    
+#     # Education Information
+#     child_education_level: Annotated[str, Form()],
+#     is_educated: Annotated[str, Form()],
+#     education_level: Annotated[str, Form()],
+    
+#     # Employment Information
+#     have_income: Annotated[str, Form()],
+#     primary_job: Annotated[str, Form()],
+#     find_job: Annotated[str, Form()],
+#     no_job_reason: Annotated[str, Form()],
+#     no_job_reason_other: Annotated[str, Form()],
+    
+#     # Training Information
+#     no_tvet: Annotated[str, Form()],
+#     is_tvet: Annotated[str, Form()],
+    
+#     # Support Information
+#     daily_help: Annotated[str, Form()],
+#     chronic_diseases: Annotated[str, Form()],
+    
+#     # Authentication
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+    
+#     # Optional parameters with defaults
+#     score_status_live: Annotated[str, Form()] = "",
+# ) -> dict:
+    
+#     # Save uploaded files and get paths
+#     disability_photo_path = await save_upload_file(disability_photo, UPLOAD_DIR)
+#     disability_photo_infor_path = await save_upload_file(disability_photo_infor, UPLOAD_DIR)
+#     disability_photo_doc_path = await save_upload_file(disability_photo_doc, UPLOAD_DIR)
+        
+#     logger.debug("MainCreateInternal fields: %s", MainCreateInternal.model_fields.keys())
+#     # Validate local DB user
+#     db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#     user_id = db_user["id"]
+
+#     # Get user_id_pwd from UserProfile table (DMIS info)
+#     user_profile = await crud_user_profile.get_by_user_id(db, user_id)
+#     if not user_profile:
+#         raise HTTPException(
+#             status_code=404, 
+#             detail="User profile with DMIS info not found. Please fetch /user-profile first."
+#         )
+#     user_profile_id = user_profile.id  # <-- This is the user_profile table's PK
+#     user_id_pwd = user_profile.user_id_pwd  # DMIS ID if needed
+
+#     logger.debug("UserProfile ID: %s", user_profile_id)
+#     logger.debug("UserProfile DMIS ID: %s", user_id_pwd)
+
+#     # --- DUPLICATE VALIDATION ---
+#     existing_record = await crud_main.get_by_created_by(db, user_id)
+#     if existing_record:
+#         raise HTTPException(
+#             status_code=status.HTTP_409_CONFLICT,
+#             detail=f"A disability registration already exists for user_id {user_id_pwd}."
+#         )
+    
+#     try:
+#         # Map gender integer to Gender enum
+#         gender_mapping = {0: Gender.OTHER, 1: Gender.MALE, 2: Gender.FEMALE}
+#         gender_enum = gender_mapping.get(gender, Gender.MALE)
+
+        
+#         # Convert year_start_disability to a date (assuming January 1st of that year)
+#         disability_date_val = date(year_start_disability, 1, 1) if year_start_disability else None
+#         submit_date_val = datetime.strptime(submit_date, "%Y-%m-%d").date() if submit_date else None
+
+
+#         # Create the registration data object
+#         registration_data = MainCreateInternal(
+#             # Map disability form fields to Main model fields
+#             # family_name=disability_family_name,
+#             # given_name=disability_given_name,
+#             # family_name_en=disability_family_name_en,
+#             # given_name_en=disability_given_name_en,
+#             gender=gender_enum,
+#             national_id=national_id,
+#             family_code=family_code,
+
+#             name=disability_name_eng,
+#             first_name=disability_given_name_en,
+#             last_name=disability_family_name_en,
+#             first_name_kh=disability_given_name,
+#             last_name_kh=disability_family_name,
+#             disability_date=disability_date_val,
+
+#             family_name=disability_family_name,
+#             given_name=disability_given_name,
+#             family_name_en=disability_family_name_en,
+#             given_name_en=disability_given_name_en,
+
+
+#             phone_number=phone_number,
+#             idpoor_id=idpoor_id,
+#             family_code_idpoor=family_code_idpoor,
+#             vacine_status=str(vacine_status),
+#             vacine_date=vacine_date,
+#             job=job,
+#             village_id=village_id,
+#             dob=date_of_birth,
+#             live_with_who=live_with_who,
+#             reason_disability=reason_disability,
+#             year_start_disability=str(year_start_disability),
+#             score_question=score_question,
+#             score_status_live=score_status_live,
+#             is_educated=is_educated,
+#             education_level=education_level,
+#             have_income=have_income,
+#             primary_job=primary_job,
+#             find_job=find_job,
+#             no_job_reason=no_job_reason,
+#             no_job_reason_other=no_job_reason_other,
+#             no_tvet_reason=no_tvet, 
+#             is_tvet=is_tvet,
+#             daily_help=daily_help,
+#             chronic_diseases=chronic_diseases,
+#             idpoor_status=idpoor_status,
+#             disability_getinfor=disability_getinfor,
+#             disability_name=disability_name,
+#             submit_date=submit_date_val,
+#             child_education_level=child_education_level,
+
+#             disability_code=disability_code,
+            
+#             # Set required fields that don't directly map
+#             gazetteer_code=village_id,  # Use village_id as gazetteer_code
+
+#             # Save uploaded file paths
+#             disability_photo=disability_photo_path,
+#             disability_photo_infor=disability_photo_infor_path,
+#             disability_photo_path=disability_photo_path,
+#             disability_photo_doc=disability_photo_doc_path,
+
+
+#             # Additional notes with unmapped fields
+#             notes=f"Disability Registration - Name: {disability_name}, Name EN: {disability_name_eng}, GetInfo: {disability_getinfor}, Submit Date: {submit_date}, Photo: {disability_photo}, Photo Info: {disability_photo_infor}, Photo Path: {disability_photo_path}, Photo Doc: {disability_photo_doc}, Child Education: {child_education_level}",
+            
+
+#             # created_by=int(user_profile.user_id),
+#             created_by=user_id,
+#         )
+        
+#         # Create the main record in database
+#         created_record = await crud_main.create(db=db, object=registration_data)
+
+#         # Serialize the full DB record
+#         record_data = MainRead.from_orm(created_record)
+
+
+#         # Step loop score_question
+#         # convert score_question to object
+
+#         score_question_array = [
+#             {"keyname": "Q1_1_1", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_2", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_3", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_4", "answer_code": "A1", "category": "C1"},
+#             {"keyname": "Q1_1_5", "answer_code": "A2", "category": "C1"},
+#             {"keyname": "Q1_1_6", "answer_code": "Ä2", "category": "C1"},
+#             {"keyname": "Q1_1_7", "answer_code": "A2", "category": "C1"},
+#         ]
+
+
+#         # Decide: use frontend data or fallback to static
+#         if score_question and score_question.strip():
+#             try:
+#                 questions = json.loads(score_question)
+#                 if not isinstance(questions, list):
+#                     raise ValueError("score_question must be a JSON array")
+#                 raw_json_to_save = score_question.strip()
+#                 logging.debug("Using score_question from frontend")
+#             except json.JSONDecodeError as e:
+#                 raise HTTPException(status_code=400, detail=f"Invalid JSON in score_question: {e}")
+#         else:
+#             questions = score_question_array
+#             raw_json_to_save = json.dumps(score_question_array)  # Convert static list → JSON string
+#             logging.debug("No score_question provided → using static default answers")
+
+#         # Save the raw JSON string into main.score_question field
+#         created_record.score_question = raw_json_to_save
+#         await db.commit()
+#         await db.refresh(created_record)
+
+#         saved_count = 0
+#         for q in questions:
+#             keyname = q["keyname"]
+#             answer_code = q["answer_code"]
+#             category_code = q.get("category") or q.get("category_code")
+
+#             question_answer_data = QuestionAnswerCreateInternal(
+#                 main_id=created_record.id,
+#                 question_code=keyname,
+#                 category_code=category_code,
+#                 answer_code=answer_code
+#             )
+
+#             await crud_question_answer.create_question_answer(db=db, qa_data=question_answer_data)
+#             saved_count += 1
+
+#         logging.debug(f"Inserted {saved_count} score answers into question_answer table")
+
+#         # questions = [{"keyname":"Q1_4_1","keyscore":1, "answer_code": "A1", "category_code": "C1"},{"keyname":"Q1_4_6","keyscore":3, "answer_code": "A2", "category_code": "C2"}]
+
+#         # for q in questions:
+#         #     keyname = q["keyname"]
+#         #     answer_code = q["answer_code"]
+#         #     category_code = q["category_code"]
+#         #     crud_question_answer_data = QuestionAnswerInternal(
+#         #         main_id=created_record.id,
+#         #         question_code=keyname,
+#         #         category_code=category_code,
+#         #         answer_code=answer_code
+#         #     )
+
+#         #     question_answer_created_record = await crud_question_answer.create(db=db, object=crud_question_answer_data)
+
+        
+        
+#         # return {
+#         #     "message": f"Disability registration created successfully for {disability_name_eng}",
+#         #     "disability_id": created_record.id,
+#         #     "status": "registered",
+#         #     "record_id": created_record.id,
+#         #     "user_id": user_id_pwd,
+#         #     "created_by": str(user_id_pwd)
+#         # }
+
+#         return {
+#             "error": False,
+#             "message": "success",
+#             "data": record_data.model_dump(by_alias=True)  # <- important
+#         }
+        
+#     except ValueError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=str(e)
+#         )
+#     except IntegrityError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_409_CONFLICT,
+#             detail=f"Database integrity error - possibly duplicate national ID: {str(e)}"
+#         )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to create disability registration: {str(e)}"
+#         )
+
+
+
+
+
+
+
+============
+
+# Directory to save uploaded files
+UPLOAD_DIR = Path("app/api/v1/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.pdf', '.webp'}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+import uuid
+import mimetypes
+
+async def save_upload_file(file: UploadFile, folder: Path) -> str:
+    if file is None:
+        return None
+    
+    # Validate file size
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024)}MB"
+        )
+    
+    # Validate file extension
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type {file_ext} not allowed. Allowed types: {ALLOWED_EXTENSIONS}"
+        )
+    
+    # Sanitize filename - use UUID to prevent path traversal
+    safe_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = folder / safe_filename
+    
+    # Validate file content type
+    detected_type = mimetypes.guess_type(file.filename)[0]
+    if not detected_type or not detected_type.startswith(('image/', 'application/pdf')):
+        raise HTTPException(status_code=400, detail="Invalid file content type")
+    
+    # Ensure folder exists and is within expected directory
+    folder.mkdir(parents=True, exist_ok=True)
+    
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+    
+    return str(file_path)
+
+
+
+async def uploadfile_to_small_base64(
+    file: UploadFile | None,
+    max_size=(800, 800),
+    quality=65,
+) -> str | None:
+    if not file:
+        return None
+
+    raw = await file.read()
+    if not raw:
+        return None
+
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image = image.convert("RGB")
+        image.thumbnail(max_size)
+
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=quality, optimize=True)
+
+        compressed = buffer.getvalue()
+
+        # 🔒 Safety limit (~900 KB)
+        if len(compressed) > 900_000:
+            raise HTTPException(
+                status_code=400,
+                detail="Image too large after compression"
+            )
+
+        return base64.b64encode(compressed).decode("utf-8")
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
+
+@router.post(
+    "/insertdisability",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new disability member",
+    description="Create a new disability registration record following the external API format"
+)
+async def insert_disability(
+    # Authentication
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+    
+    # Personal Information - Khmer
+    disability_getinfor: Annotated[str, Form()],
+    disability_family_name: Annotated[str, Form()],
+    disability_given_name: Annotated[str, Form()],
+    disability_name: Annotated[str, Form()], # disability_name=សឿន ស្រីលក្ខណាokasdo
+    
+    # Personal Information - English
+    disability_family_name_en: Annotated[str, Form()],
+    disability_given_name_en: Annotated[str, Form()],
+    disability_name_eng: Annotated[str, Form()],
+    
+    # Basic Information
+    gender: Annotated[int, Form()],
+    national_id: Annotated[str, Form()],
+    family_code: Annotated[str, Form()],
+    phone_number: Annotated[str, Form()],
+    date_of_birth: Annotated[str, Form()],
+    
+    # ID Poor Information
+    idpoor_id: Annotated[str, Form()],
+    family_code_idpoor: Annotated[str, Form()],
+    idpoor_status: Annotated[str, Form()],
+    
+    # Vaccination Information
+    vacine_status: Annotated[int, Form()],
+    vacine_date: Annotated[str, Form()],
+    
+    # Location and Living Situation
+    village_id: Annotated[str, Form()],
+    job: Annotated[str, Form()],
+    live_with_who: Annotated[str, Form()],
+    
+    # Disability Information
+    reason_disability: Annotated[str, Form()],
+    year_start_disability: Annotated[int, Form()],
+    submit_date: Annotated[str, Form()],
+
+    # disability code
+    # disability_code: Annotated[str, Form()],
+    
+    # Scoring Information
+    # score_question: Annotated[str, Form()],
+
+    # Education Information
+    child_education_level: Annotated[str, Form()],
+    is_educated: Annotated[str, Form()],
+    education_level: Annotated[str, Form()],
+    
+    # Employment Information
+    have_income: Annotated[str, Form()],
+    primary_job: Annotated[str, Form()],
+    find_job: Annotated[str, Form()],
+    no_job_reason: Annotated[str, Form()],
+    no_job_reason_other: Annotated[str, Form()],
+    
+    # Training Information
+    no_tvet: Annotated[str, Form()],
+    is_tvet: Annotated[str, Form()],
+    
+    # Support Information
+    daily_help: Annotated[str, Form()],
+    chronic_diseases: Annotated[str, Form()],
+
+    # Asset Information
+    disability_photo: Annotated[UploadFile, Form()],
+    disability_photo_full: Annotated[UploadFile, Form()],
+
+    fp_right_photos: Annotated[list[UploadFile], Form()] = [],
+    fp_left_photos: Annotated[list[UploadFile], Form()] = [],
+    fp_right_metadatas: Annotated[list[str], Form()] = [],
+    fp_left_metadatas: Annotated[list[str], Form()] = [],
+
+    # Optional Related Documents (all optional)
+    family_book: Annotated[UploadFile | None, Form()] = None,  # សៀវភៅគ្រួសារ
+    residence_book: Annotated[UploadFile | None, Form()] = None,  # សៀវភៅស្នាក់នៅ
+    national_id_card: Annotated[UploadFile | None, Form()] = None,  # អត្តសញ្ញាណបណ្ណ
+    equity_card: Annotated[UploadFile | None, Form()] = None,  # បណ្ណសមធ័ម៌
+
+    # Optional parameters with defaults
+    score_status_live: Annotated[str, Form()] = "",
+
+    # Scoring Information
+    score_question: Annotated[Optional[str], Form()] = None,
+
+) -> dict:
+        
+    # Validate local DB user
+    db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+    user_id = db_user["id"]
+
+    # Get user_id_pwd from UserProfile table (DMIS info)
+    user_profile = await crud_user_profile.get_by_user_id(db, user_id)
+    if not user_profile:
+        raise HTTPException(
+            status_code=404, 
+            detail="User profile with DMIS info not found. Please fetch /user-profile first."
+        )
+    user_profile_id = user_profile.id 
+    user_id_pwd = user_profile.user_id_pwd  # DMIS ID if needed
+
+    logger.debug("UserProfile ID: %s", user_profile_id)
+    logger.debug("UserProfile DMIS ID: %s", user_id_pwd)
+
+
+    # --- DUPLICATE VALIDATION ---
+    existing_record = await crud_main.get_by_disability_name(db, disability_name)
+    if existing_record:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"ជនមានពិការភាពជាមួយឈ្មោះ{disability_name} នេះបានចុះឈ្មោះរួចហើយ"
+        )
+    
+    try:
+        # Map gender integer to Gender enum
+        gender_mapping = {0: Gender.OTHER, 1: Gender.MALE, 2: Gender.FEMALE}
+        gender_enum = gender_mapping.get(gender, Gender.MALE)
+        
+        # Convert year_start_disability to a date (assuming January 1st of that year)
+        disability_date_val = date(year_start_disability, 1, 1) if year_start_disability else None
+        submit_date_val = datetime.strptime(submit_date, "%Y-%m-%d").date() if submit_date else None
+
+        # --- Handle score_question ---
+        score_question_array = [
+            {"keyname": "Q1_1_1", "keyscore": 0 ,"answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_2", "keyscore": 0 ,"answer_code": "A1", "category": "C1"},
+            {"keyname": "Q1_1_3", "keyscore": 0 ,"answer_code": "A1", "category": "C1"},
+        ]
+
+        if score_question and score_question.strip():
+            try:
+                questions = json.loads(score_question)
+                raw_json_to_save = score_question.strip()
+                logging.info("Using score_question from frontend")
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in score_question: {e}")
+        else:
+            questions = score_question_array
+            raw_json_to_save = json.dumps(score_question_array)
+            logging.info("No score_question from frontend → using default array")
+
+        # Create the registration data object
+        registration_data = MainModel(
+            gender=gender_enum,
+            national_id=national_id,
+            family_code=family_code,
+            name=disability_name_eng,
+            first_name=disability_given_name_en,
+            last_name=disability_family_name_en,
+            first_name_kh=disability_given_name,
+            last_name_kh=disability_family_name,
+            disability_date=disability_date_val,
+            family_name=disability_family_name,
+            given_name=disability_given_name,
+            family_name_en=disability_family_name_en,
+            given_name_en=disability_given_name_en,
+            phone_number=phone_number,
+            idpoor_id=idpoor_id,
+            family_code_idpoor=family_code_idpoor,
+            vacine_status=str(vacine_status),
+            vacine_date=vacine_date,
+            job=job,
+            village_id=village_id,
+            dob=date_of_birth,
+            live_with_who=live_with_who,
+            reason_disability=reason_disability,
+            year_start_disability=str(year_start_disability),
+            score_question=raw_json_to_save,
+            score_status_live=score_status_live,
+            is_educated=is_educated,
+            education_level=education_level,
+            have_income=have_income,
+            primary_job=primary_job,
+            find_job=find_job,
+            no_job_reason=no_job_reason,
+            no_job_reason_other=no_job_reason_other,
+            no_tvet_reason=no_tvet, 
+            is_tvet=is_tvet,
+            daily_help=daily_help,
+            chronic_diseases=chronic_diseases,
+            idpoor_status=idpoor_status,
+            disability_getinfor=disability_getinfor,
+            disability_name=disability_name, # disability_name=សឿន ស្រីលក្ខណាokasdo
+            submit_date=submit_date_val,
+            child_education_level=child_education_level,
+            gazetteer_code=village_id,
+            created_by=user_id,
+            disability_code=None,
+        )
+
+        # insert into db - PWD internal service
+        db.add(registration_data)
+        await db.flush()
+
+
+        # Convert dates to ISO format strings (YYYY-MM-DD) for JSON compatibility
+        # disability_date_str = disability_date_val.isoformat() if disability_date_val else None
+        submit_date_str = submit_date_val.isoformat() if submit_date_val else None
+
+        # Convert files to base64 for DMIS
+        disability_photo_b64 = await uploadfile_to_small_base64(disability_photo)
+        disability_photo_full_b64 = await uploadfile_to_small_base64(disability_photo_full)
+        national_id_card_b64 = await uploadfile_to_small_base64(national_id_card)
+        equity_card_b64 = await uploadfile_to_small_base64(equity_card)
+
+
+        if not national_id_card_b64:
+            national_id_card_b64 = disability_photo_b64
+
+        if not equity_card_b64:
+            equity_card_b64 = disability_photo_b64
+
+
+        # call insert disability endpoint dmis
+        dmis_payload = {
+            "user_id": user_id,
+            "disability_family_name": disability_family_name,
+            "disability_given_name": disability_given_name,
+            "disability_name": disability_name,
+            "disability_family_name_en": disability_family_name_en,
+            "disability_given_name_en": disability_given_name_en,
+            "disability_name_eng": disability_name_eng,
+            "gender": gender,
+            "national_id": national_id,
+            "family_code": family_code,
+            "phone_number": phone_number,
+            "date_of_birth": date_of_birth,
+            "idpoor_id": idpoor_id,
+            "family_code_idpoor": family_code_idpoor,
+            "idpoor_status": idpoor_status,
+            "vacine_status": str(vacine_status),
+            "vacine_date": vacine_date,
+            "job": job,
+            "village_id": village_id,
+            "live_with_who": live_with_who,
+            "reason_disability": reason_disability,
+            "year_start_disability": str(year_start_disability),
+            "submit_date": submit_date_str,
+            "score_question": raw_json_to_save,
+            "score_status_live": score_status_live,
+            "child_education_level": child_education_level,
+            "is_educated": is_educated,
+            "education_level": education_level,
+            "have_income": have_income,
+            "primary_job": primary_job,
+            "find_job": find_job,
+            "no_job_reason": no_job_reason,
+            "no_job_reason_other": no_job_reason_other,
+            "no_tvet": no_tvet,
+            "is_tvet": is_tvet,
+            "daily_help": daily_help,
+            "chronic_diseases": chronic_diseases,
+            "disability_getinfor": disability_getinfor,
+            "gazetteer_code": village_id,
+            "created_by": user_id,
+            "disability_photo": disability_photo_b64,
+            "disability_photo_infor": disability_photo_full_b64,
+            "disability_photo_path": national_id_card_b64,
+            "disability_photo_doc": equity_card_b64,
+        }
+
+
+        # call insert into DMIS external service
+        dmis_result = await insert_disability_dmis(dmis_payload)
+
+        if dmis_result.get("error"):
+            await db.rollback()
+
+            message = (dmis_result.get("message") or "").lower()
+
+            if "duplicate" in message:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Duplicate beneficiary in DMIS"
+                )
+
+            raise HTTPException(
+                status_code=502,
+                detail=f"DMIS error: {dmis_result.get('message')}"
+            )
+
+
+        dmis_disability_code = dmis_result["data"]["disability_code"]
+
+        # update disability_code
+        registration_data.disability_code = dmis_disability_code
+
+        db.add(registration_data)
+        await db.flush()
+
+        
+        main_id = registration_data.id
+        logging.info(f"Created main record with ID: {main_id}")
+
+        single_photos = {
+            "disability_photo": (
+                disability_photo,
+                AssetType.DISABILITY_PHOTO,
+            ),
+            "disability_photo_full": (
+                disability_photo_full, 
+                AssetType.DISABILITY_PHOTO_FULL,
+            ),
+        }
+
+        for field_name, (file, asset_type) in single_photos.items():
+            if file:
+                try:
+                    # Read file content
+                    content = await file.read()
+
+                    # Generate path with UUID
+                    unique_id = str(uuid.uuid4())
+                    file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+                    # Upload to MinIO
+                    if settings.ENVIRONMENT == "local" and content:
+                        await MinioService.upload_file(
+                            file_content=content,
+                            file_name=file_path,
+                            content_type=file.content_type or "image/png",
+                        )
+
+                    # Create asset record using Pydantic model
+                    asset_data = MainAsset(
+                        main_id=main_id,
+                        attachment=file_path,
+                        type=asset_type,
+                    )
+
+                    db.add(asset_data)
+                    await db.flush()
+
+                except Exception as e:
+                    # Rollback the transaction if MinIO upload fails
+                    await db.rollback()
+                    raise e
+
+        # Handle optional related documents
+        if family_book or residence_book or national_id_card or equity_card:
+            related_docs = {
+                "family_book": (family_book, AssetType.FAMILY_BOOK),
+                "residence_book": (residence_book, AssetType.RESIDENCE_BOOK),
+                "national_id_card": (national_id_card, AssetType.NID),
+                "equity_card": (equity_card, AssetType.EQUITY_CARD),
+            }
+
+            for field_name, (file, asset_type) in related_docs.items():
+                if file:   
+                    try:
+                        # Read file content
+                        content = await file.read()
+
+                        # Generate path with UUID
+                        unique_id = str(uuid.uuid4())
+                        file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+                        # Upload to MinIO
+                        if settings.ENVIRONMENT == "local" and content:
+                            await MinioService.upload_file(
+                                file_content=content,
+                                file_name=file_path,
+                                content_type=file.content_type or "image/png",
+                            )
+
+                        # Create asset record using Pydantic model
+                        asset_data = MainAsset(
+                            main_id=main_id,
+                            attachment=file_path,
+                            type=asset_type,
+                        )
+
+                        db.add(asset_data)
+                        await db.flush()
+
+                    except Exception as e:
+                        # Rollback the transaction if MinIO upload fails
+                        await db.rollback()
+                        raise e
+
+        
+        # Handle multiple fingerprint photos
+        fingerprint_photos = {
+            "fp_right_photos": (fp_right_photos, AssetType.FP_RIGHT, fp_right_metadatas),
+            "fp_left_photos": (fp_left_photos, AssetType.FP_LEFT, fp_left_metadatas),
+        }
+        for field_name, (files, asset_type, metadata_list) in fingerprint_photos.items():
+            if files:
+                # Handle each file in the list
+                for index, file in enumerate(files):
+                    try:
+                        # Read file content
+                        content = await file.read()
+
+                        # Generate path with UUID
+                        unique_id = str(uuid.uuid4())
+                        file_path = f"{main_id}/main/{field_name}_{unique_id}.png"
+
+
+                        if settings.ENVIRONMENT == "local" and content:
+                            # Upload to MinIO
+                            await MinioService.upload_file(
+                                file_content=content,
+                                file_name=file_path,
+                                content_type=file.content_type or "image/png",
+                            )
+
+                        # Get metadata for this specific file
+                        file_metadata = None
+                        if metadata_list and index < len(metadata_list):
+                            metadata_string = metadata_list[index]
+                            # Validate that the metadata is valid JSON
+                            try:
+                                # Parse to validate JSON format
+                                json.loads(metadata_string)
+                                file_metadata = metadata_string
+                            except json.JSONDecodeError as e:
+                                logging.warning(
+                                    f"Invalid JSON metadata for {asset_type.name.lower()} "
+                                    f"photo {index}: {e}"
+                                )
+                                # Store as plain text if not valid JSON
+                                file_metadata = metadata_string
+
+                        new_asset = MainAsset(
+                            main_id=main_id,
+                            attachment=file_path,
+                            type=asset_type,
+                            remarks=file_metadata,
+                        )
+                        db.add(new_asset)
+                        await db.flush()
+
+                    except Exception as e:
+                        # Rollback the transaction if MinIO upload fails
+                        await db.rollback()
+                        raise e
+
+        # Commit the transaction if everything succeeded
+        await db.commit()
+        await db.refresh(registration_data)
+
+        
+        registration_data.score_question = raw_json_to_save
+        await db.commit()
+        await db.refresh(registration_data)
+
+        saved_count = 0
+        for q in questions:
+            keyname = q["keyname"]
+            answer_code = q["answer_code"]
+            category_code = q.get("category") or q.get("category_code")
+            qa_data = QuestionAnswerCreateInternal(
+                main_id=registration_data.id,
+                question_code=keyname,
+                category_code=category_code,
+                answer_code=answer_code
+            )
+            await crud_question_answer.create_question_answer(db=db, qa_data=qa_data)
+            saved_count += 1
+
+        logging.info(f"Inserted {saved_count} score answers into question_answer table")
+        
+        # --- Convert to Pydantic schema ---
+        main_read_schema = MainRead.model_validate(registration_data)
+        return {"error": False, "message": "success", "data": main_read_schema.model_dump(by_alias=True)}
+        
+    except Exception as e:
+        # Rollback on any error
+        await db.rollback()
+        
+        # Log the error for debugging
+        error_message = str(e)
+        logging.error(f"Error in create_member: {error_message}", exc_info=True)
+
+        # Check if it's an HTTPException and re-raise it
+        if isinstance(e, HTTPException):
+            raise
+        
+        # Check if it's a validation error and handle it gracefully
+        if "validation error" in error_message.lower() and "FmAccountMain" in error_message:
+            # This is a Pydantic validation error, provide user-friendly message
+            if "String should have at least" in error_message:
+                # Generic string length error
+                raise HTTPException(
+                    status_code=HTTPStatus.BAD_REQUEST, detail="សូមពិនិត្យបំពេញទិន្នន័យរបស់អ្នកឡើងវិញ ហើយព្យាយាមម្តងទៀត។"
+                )
+            else:
+                # Generic validation error
+                raise HTTPException(
+                    status_code=HTTPStatus.BAD_REQUEST, detail="សូមពិនិត្យបំពេញទិន្នន័យរបស់អ្នកឡើងវិញ ហើយព្យាយាមម្តងទៀត។"
+                )
+        else:
+            # Other types of errors
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=(
+                    "មានបញ្ហាបច្ចេកទេស សូមទាក់ទងជំនួយ។"
+                    if settings.ENVIRONMENT == "production"
+                    else f"Error creating main account: {error_message}"
+                ),
+            )
