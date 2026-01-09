@@ -1,0 +1,115 @@
+# @router.get(
+#     "/{main_record_id}",
+#     response_model=MainRecordResponse,
+#     summary="Get main record by ID",
+# )
+# async def get_main_record(
+#     main_record_id: int,
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+# ):
+#     # Step 1: Validate user access
+#     await validate_user(keycloak_user.username, keycloak_user, db)
+
+#     try:
+#         # Step 2: Fetch the main record from DB
+#         record = await crud_main.get(db=db, id=main_record_id)
+
+#         if not record or record.get("is_deleted"):
+#             return MainListResponse(
+#                 error=True,
+#                 message="Fail for fetching detail main record",
+#                 data=[]
+#             )
+
+#         # Step 3: Convert DB record to Pydantic model
+#         main_read = MainRead(**record)
+
+#         # Step 4: Attach MinIO asset URLs (disability photos, documents)
+#         asset_urls = await attach_asset_urls(db, main_record_id, keycloak_user.token)
+#         main_read.disability_photo_path = asset_urls.get("disability_photo")
+#         main_read.disability_photo_infor_path = asset_urls.get("disability_photo_infor")
+#         main_read.disability_photo_doc_path = asset_urls.get("disability_photo_doc")
+
+#         # Step 5: Return the response
+#         return MainRecordResponse(
+#             error=False,
+#             message="Successful for fetching detail main record",
+#             data=[main_read]
+#         )
+
+#     except Exception as e:
+#         # Catch any unexpected error
+#         return MainRecordResponse(
+#             error=True,
+#             message=f"Fail for fetching detail main record: {str(e)}",
+#             data=[]
+#         )
+
+
+
+====================
+=====================
+======================
+
+# from typing import List, Optional
+# from pydantic import BaseModel, Field
+
+
+# class AnswerItem(BaseModel):
+#     """Answer within a category."""
+#     code: str = Field(..., description="Answer code (e.g. A1)")
+#     text: Optional[str] = Field(None, description="Answer text")
+
+
+# class QuestionCategoryItem(BaseModel):
+#     """Category (e.g. ដៃស្តាំ) with its possible answers."""
+#     category: Optional[str] = Field(None, description="Category name")
+#     answers: List[AnswerItem] = Field(default_factory=list, description="Answers for this category")
+
+
+# class QuestionItem(BaseModel):
+#     """A question inside an age group."""
+#     code: str = Field(..., description="Question code (e.g. Q1_1_1)")
+#     text: Optional[str] = Field(None, description="Question text")
+#     question_by_category: List[QuestionCategoryItem] = Field(default_factory=list)
+
+
+# class MainCategoryItem(BaseModel):
+#     """Main category (e.g., ដៃស្តាំ, ដៃឆ្វេង, ដៃទាំងពីរ)."""
+#     code: str = Field(..., description="Category code")
+#     text: str = Field(..., description="Category name")
+
+
+# class CategoryQuestionsByAgeGroup(BaseModel):
+#     """Questions grouped by age group (under 8, over 8, etc.)."""
+#     age_group: str
+#     questions: List[QuestionItem] = Field(default_factory=list)
+
+
+# class SubtypeItem(BaseModel):
+#     """Subtype (child disability type)."""
+#     code: str
+#     title: Optional[str]
+#     description: Optional[str]
+
+
+#     # NEW FIELD
+#     main_category: List[MainCategoryItem] = Field(default_factory=list)
+#     questions_by_age_group: List[CategoryQuestionsByAgeGroup] = Field(default_factory=list)
+
+
+# class DisabilityCategoryQuestionItem(BaseModel):
+#     """Parent disability type with subtypes."""
+#     disability_code: str
+#     title: Optional[str]
+#     description: Optional[str]
+#     subtypes: List[SubtypeItem] = Field(default_factory=list)
+
+
+# class DisabilityCategoryQuestionResponse(BaseModel):
+#     """Final API response."""
+#     data: List[DisabilityCategoryQuestionItem]
+
+
+# app/schemas/disability.py
