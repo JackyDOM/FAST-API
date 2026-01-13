@@ -1,0 +1,228 @@
+from datetime import date
+from enum import Enum
+
+from sqlalchemy import ForeignKey, Integer, String, Text, Boolean, Date
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Enum as SQLAlchemyEnum
+
+from ..core.db.database import Base
+from ..models.mixins import TimestampMixin
+
+
+class Gender(str, Enum):
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+    OTHER = "OTHER"
+
+
+class AccountStatus(str, Enum):
+    CA_REMOVED = "CA_R"
+    CA_DRAFT = "CA_D"
+    CC_PENDING = "CC_P"
+    CC_APPROVED = "CC_A"
+    CC_REJECTED = "CC_R"
+    SPR_PENDING = "SPR_P"
+    SPR_APPROVED = "SPR_A"
+    SPR_REJECTED = "SPR_R"
+    NSAF_PENDING = "NSAF_P"
+    NSAF_APPROVED = "NSAF_A"
+    NSAF_REJECTED = "NSAF_R"
+
+
+class Main(Base, TimestampMixin):
+    __tablename__ = "main"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        autoincrement=True,
+        nullable=False,
+        unique=True,
+        primary_key=True,
+        init=False,
+    )
+
+    # Names
+    name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    first_name: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    first_name_kh: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    last_name_kh: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    family_name: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    given_name: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    family_name_en: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    given_name_en: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+
+    # Basic info
+    have_eq_card: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    eq_card: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    disability_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    gender: Mapped[Gender] = mapped_column(
+        SQLAlchemyEnum(Gender, name="gender", create_type=False),
+        default=Gender.MALE,
+        nullable=False
+    )
+
+    # IDs & codes
+    national_id: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    family_code: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    phone_number: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    idpoor_id: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    family_code_idpoor: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    vacine_status: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    vacine_date: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    job: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    village_id: Mapped[str] = mapped_column(String(50), nullable=False, default=None)
+    dob: Mapped[str] = mapped_column(String(50), nullable=False, default=None)
+    live_with_who: Mapped[str] = mapped_column(String(50), nullable=False, default=None)
+    reason_disability: Mapped[str] = mapped_column(String(100), nullable=False, default=None)
+    year_start_disability: Mapped[str] = mapped_column(String(50), nullable=False, default=None)
+
+    # Long fields
+    score_question: Mapped[str] = mapped_column(Text, nullable=False, default=None)
+    notes: Mapped[str] = mapped_column(Text, nullable=True, default=None)
+    remarks: Mapped[str] = mapped_column(Text, nullable=True, default=None)
+
+    # Other fields
+    score_status_live: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    
+    is_educated: Mapped[str] = mapped_column(String(50), nullable=False, default=None) 
+    education_level: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    have_income: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    primary_job: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    find_job: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    no_job_reason: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    no_job_reason_other: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+
+    no_tvet_reason: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    is_tvet: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+
+    daily_help: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    chronic_diseases: Mapped[str] = mapped_column(String(100), nullable=True, default=None)
+    idpoor_status: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+
+    status: Mapped[AccountStatus] = mapped_column(SQLAlchemyEnum(AccountStatus), default=AccountStatus.CA_DRAFT)
+
+    gazetteer_code: Mapped[str] = mapped_column(String(100), nullable=False, default=None)
+    spid: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    latitude: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+    longitude: Mapped[str] = mapped_column(String(50), nullable=True, default=None)
+
+    # NEW fields
+    disability_getinfor: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+    disability_name: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+    submit_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)  # submit date
+    child_education_level: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)  # child education level
+
+    disability_code: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+
+    # Foreign keys
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), index=True, default=None, nullable=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), index=True, default=None, nullable=True)
+
+
+
+
+
+
+
+
+
+
+
+
+=====================
+
+async def get_list_disabilities_commune(disability_params: dict) -> dict:
+    """
+    Fetch disability data from DMIS API using the correct endpoint.
+    """
+    try:
+        login_response = await _get_dmis_token()
+
+        if login_response.get("error") is True:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Failed to authenticate with DMIS API"
+            )
+
+        # 2. Extract token
+        user_data = login_response.get("user", {})
+        token = user_data.get("token", "")
+
+        if not token:
+            raise HTTPException(
+                status_code=401,
+                detail="DMIS login did not return token"
+            )
+
+        # 3. Fix input body for DMIS API
+        dmis_body = {
+            "user_id": disability_params.get("user_id_pwd")
+        }
+
+        url = f"{DMIS_API_BASE_URL}/disability/getdisabilities"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        # 4. Call disability API
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=dmis_body, headers=headers) as resp:
+                dmis_response = await resp.json()
+
+        # 5. Extract disabilities
+        disabilities = dmis_response.get("disabilities", [])
+        if not isinstance(disabilities, list):
+            disabilities = []
+
+        return {
+            "success": True,
+            "message": dmis_response.get("message", "Retrieved successfully"),
+            "error": False,
+            "data": disabilities
+        }
+
+    except Exception as e:
+        await _handle_unexpected_error(e, SERVICE_DMIS_AUTH, disability_params)
+
+
+========================
+
+
+# async def get_disability_dmis(disability_id: str) -> str | None:
+#     """
+#     Fetch the existing disability_code from DMIS using getdisabilitydetail endpoint.
+#     """
+#     try:
+#         login_response = await _get_dmis_token()
+#         if login_response.get("error"):
+#             logging.error("Failed to authenticate with DMIS API")
+#             return None
+
+#         token = login_response.get("user", {}).get("token")
+#         if not token:
+#             logging.error("DMIS login did not return token")
+#             return None
+
+#         url = f"{DMIS_API_BASE_URL}/disability/getdisabilitydetail"
+#         headers = {
+#             "Authorization": f"Bearer {token}",
+#             "Content-Type": "application/json"
+#         }
+#         payload = {"id": disability_id}
+
+#         async with aiohttp.ClientSession() as session:
+#             async with session.post(url, json=payload, headers=headers, timeout=30) as response:
+#                 dmis_response = await response.json()
+#                 logging.info("DMIS getdisabilitydetail response: %s", dmis_response)
+
+#                 if not dmis_response.get("error") and "disability" in dmis_response:
+#                     return dmis_response["disability"].get("disability_code")
+                
+#                 return None
+
+#     except Exception as e:
+#         logging.error("Error fetching disability_code from DMIS: %s", e)
+#         return None
+
