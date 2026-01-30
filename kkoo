@@ -1,0 +1,105 @@
+
+# @router.get(
+#     "/user-profile-admin",
+#     response_model=UserProfileResponse,
+#     summary="GET Token, user_id_pwd from DMIS",
+#     description="Retrieve Token, user_id_pwd from DMIS API service"
+# )
+# async def get_user_profile(
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+# ) -> UserProfileResponse:
+
+#     if not keycloak_user:
+#         raise HTTPException(status_code=401, detail="Unauthorized")
+
+#     # Validate local user
+#     db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#     user_id = db_user["id"]
+#     base_username = db_user.get("username")
+#     password = db_user.get("password")
+
+#     if not base_username or not password:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="DMIS credentials not found for this user"
+#         )
+
+#     # Username candidates
+#     username_candidates = [base_username] + [f"{base_username}{i}" for i in range(1, 6)]
+
+#     success_data = None 
+#     response_success = []
+#     response_error = []
+
+#     for username in username_candidates:
+#         logging.info(f"[DEBUG] Trying DMIS login user_id={user_id}, username={username}")
+
+#         try:
+#             dmis_response = await get_User_Profile_data({"username": username, "password": password})
+#             dmis_data = dmis_response.get("data", {})
+
+#             # Create the success item
+#             success_item = {
+#                 "username": username,
+#                 "status": "success",
+#                 "data": {
+#                     "token": dmis_data.get("token"),
+#                     "user_id_pwd": dmis_data.get("user_id_pwd"),
+#                     "user_id": user_id
+#                 }
+#             }
+
+#             # Add to success list
+#             response_success.append(success_item)
+
+#             # Save first success for top-level `data`
+#             if not success_data:
+#                 success_data = success_item["data"]
+
+#                 # Save to DB
+#                 profile_create = UserProfileCreate(
+#                     user_id=user_id,
+#                     token=dmis_data.get("token"),  # store full token
+#                     user_id_pwd=str(dmis_data.get("user_id_pwd"))
+#                 )
+#                 await crud_user_profile.create_or_update(db, profile_create)
+
+#             logging.info(f"[DMIS SUCCESS] user_id={user_id}, username={username}")
+
+#         except HTTPException as e:
+#             logging.warning(f"[DMIS FAILED] user_id={user_id}, username={username}, error={e.detail}")
+#             response_error.append({
+#                 "username": username,
+#                 "status": "failed",
+#                 "error": e.detail
+#             })
+
+#         except Exception as e:
+#             logging.error(f"[DMIS EXCEPTION] user_id={user_id}, username={username}\n{traceback.format_exc()}")
+#             response_error.append({
+#                 "username": username,
+#                 "status": "exception",
+#                 "error": str(e)
+#             })
+
+#     if not success_data:
+#         # No successful login
+#         return UserProfileResponse(
+#             success=False,
+#             data=None,
+#             response_success=[],
+#             response_error=response_error,
+#             message="Invalid username or password",
+#             error={"error": True, "error_key": "loginInvalidPassword"}
+#         )
+
+#     # At least one success
+#     return UserProfileResponse(
+#         success=True,
+#         data=success_data,     
+#         response_success=response_success, 
+#         response_error=response_error,
+#         message="DMIS login completed successfully",
+#         error=None
+#     )
