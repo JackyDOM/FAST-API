@@ -1,0 +1,314 @@
+
+# work and good log
+# @router.get(
+#     "/user-profile-admin",
+#     response_model=UserProfileResponse,
+#     summary="GET Token, user_id_pwd from DMIS",
+#     description="Retrieve Token, user_id_pwd from DMIS API service"
+# )
+# async def get_user_profile(
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+# ) -> UserProfileResponse:
+
+#     if not keycloak_user:
+#         raise HTTPException(status_code=401, detail="Unauthorized")
+
+#     # 🔹 Validate local user
+#     db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#     user_id = db_user["id"]
+
+#     base_username = db_user.get("username")
+#     password = db_user.get("password")
+
+#     if not base_username or not password:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="DMIS credentials not found for this user"
+#         )
+
+#     # 🔁 Username candidates
+#     username_candidates = [base_username] + [
+#         f"{base_username}{i}" for i in range(1, 6)
+#     ]
+
+#     success_data = None
+#     logs = []
+
+#     for username in username_candidates:
+#         logging.info(
+#             f"[DEBUG] Trying DMIS login user_id={user_id}, username={username}, password={password}"
+#         )
+
+#         try:
+#             dmis_response = await get_User_Profile_data({
+#                 "username": username,
+#                 "password": password
+#             })
+
+#             dmis_data = dmis_response.get("data", {})
+
+#             logging.info(
+#                 f"[DMIS SUCCESS] user_id={user_id}, username={username}"
+#             )
+
+#             logs.append({
+#                 "user_id": user_id,
+#                 "username": username,
+#                 "password": password,
+#                 "status": "success"
+#             })
+
+#             # ✅ Save first successful login only
+#             if not success_data:
+#                 success_data = dmis_data
+#                 success_data["user_id"] = user_id
+
+#                 profile_create = UserProfileCreate(
+#                     user_id=user_id,
+#                     token=dmis_data.get("token")[:50],
+#                     user_id_pwd=str(dmis_data.get("user_id_pwd"))
+#                 )
+#                 await crud_user_profile.create_or_update(db, profile_create)
+
+#         except HTTPException as e:
+#             logging.warning(
+#                 f"[DMIS FAILED] user_id={user_id}, username={username}, error={e.detail}"
+#             )
+#             logs.append({
+#                 "user_id": user_id,
+#                 "username": username,
+#                 "password": password,
+#                 "status": "failed",
+#                 "error": e.detail
+#             })
+
+#         except Exception as e:
+#             logging.error(
+#                 f"[DMIS EXCEPTION] user_id={user_id}, username={username}\n{traceback.format_exc()}"
+#             )
+#             logs.append({
+#                 "user_id": user_id,
+#                 "username": username,
+#                 "password": password,
+#                 "status": "exception",
+#                 "error": str(e)
+#             })
+
+#     # ❌ If no successful login
+#     if not success_data:
+#         return UserProfileResponse(
+#             success=False,
+#             data=None,
+#             message="Invalid username or password",
+#             error={
+#                 "error": True,
+#                 "error_key": "loginInvalidPassword",
+#                 "attempts": logs
+#             }
+#         )
+
+#     # ✅ At least one success
+#     return UserProfileResponse(
+#         success=True,
+#         data=success_data,
+#         message="DMIS login completed successfully",
+#         # error={"attempts": logs}
+#     )
+
+
+
+
+
+# @router.get(
+#     "/user-profile",
+#     response_model=UserProfileResponse,
+#     summary="GET Token, user_id_pwd from DMIS",
+#     description="Retrieve Token, user_id_pwd from DMIS API service"
+# )
+# async def get_user_profile(
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)] = None,
+#     db: Annotated[AsyncSession, Depends(async_get_db)] = None,
+# ) -> UserProfileResponse:
+
+#     try:
+#         if not keycloak_user:
+#             raise HTTPException(status_code=401, detail="Unauthorized")
+
+#         # Get the DB user record
+#         db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#         user_id = db_user["id"]  # dict style access
+
+#         # Extract DMIS credentials from the user table
+#         dmis_username = db_user.get("username")    
+#         dmis_password = db_user.get("password") 
+
+#         # Log the credentials (masked password for safety)
+#         logging.info(f"[DEBUG] Fetching DMIS data for user_id={user_id}, username={dmis_username}, password={dmis_password}")
+
+#         if not dmis_username or not dmis_password:
+#             logging.error(f"[ERROR] DMIS credentials not found for user_id {user_id}")
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail="DMIS credentials not found for this user"
+#             )
+        
+#         # Call DMIS API with dynamic credentials
+#         dmis_response = await get_User_Profile_data({
+#             "username": dmis_username,
+#             "password": dmis_password
+#         })
+
+#         # Merge DB user_id into DMIS data
+#         dmis_data = dmis_response.get("data", {})
+#         dmis_data["user_id"] = user_id  # add DB user_id
+
+#         # Save/update in DB
+#         profile_create = UserProfileCreate(
+#             user_id=user_id,
+#             token=dmis_data.get("token")[:50],
+#             user_id_pwd=str(dmis_data.get("user_id_pwd"))
+#         )
+#         await crud_user_profile.create_or_update(db, profile_create)
+
+#         # Return full response
+#         return UserProfileResponse(
+#             success=dmis_response.get("success", True),
+#             data=dmis_data,
+#             message=dmis_response.get("message", "Retrieved user profile successfully"),
+#             error=dmis_response.get("error"),
+#         )
+
+#     except Exception as e:
+#         # Log full exception with stack trace
+#         logging.error(
+#             f"[EXCEPTION] Failed to fetch DMIS data for user_id={user_id}, "
+#             f"username={dmis_username if 'dmis_username' in locals() else 'N/A'}, "
+#             f"error: {str(e)}\n{traceback.format_exc()}"
+#         )
+#         # Optionally, return a 500 HTTPException
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to fetch DMIS data: {str(e)}"
+#         )
+
+
+# @router.get(
+#     "/user-profile",
+#     response_model=UserProfileResponse,
+#     summary="GET Token, user_id_pwd from DMIS",
+#     description="Retrieve Token, user_id_pwd from DMIS API service"
+# )
+# async def get_user_profile(
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)] = None,
+#     db: Annotated[AsyncSession, Depends(async_get_db)] = None,
+# ) -> UserProfileResponse:
+
+#     if not keycloak_user:
+#         raise HTTPException(status_code=401, detail="Unauthorized")
+
+#     # Get the DB user record
+#     db_user = await validate_user(keycloak_user.username, keycloak_user, db)
+#     user_id = db_user["id"]  # dict style access
+
+#     # Extract DMIS credentials from the user table
+#     dmis_username = db_user.get("username")          # DMIS username
+#     dmis_password = db_user.get("hashed_password")   # DMIS password (plain text!)
+
+#     if not dmis_username or not dmis_password:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="DMIS credentials not found for this user"
+#         )
+    
+#     # Call DMIS API with dynamic credentials
+#     dmis_response = await get_User_Profile_data({
+#         "username": dmis_username,
+#         "password": dmis_password
+#     })
+
+#     # Call DMIS API
+#     # dmis_response = await get_User_Profile_data({})
+
+#     # Merge DB user_id into DMIS data
+#     dmis_data = dmis_response.get("data", {})
+#     dmis_data["user_id"] = user_id  # add DB user_id
+
+#     # 4️ Save/update in DB
+#     profile_create = UserProfileCreate(
+#         user_id=user_id,
+#         token=dmis_data.get("token")[:50],
+#         user_id_pwd=str(dmis_data.get("user_id_pwd"))
+#     )
+#     await crud_user_profile.create_or_update(db, profile_create)
+
+#     # Return full response
+#     return UserProfileResponse(
+#         success=dmis_response.get("success", True),
+#         data=dmis_data,
+#         message=dmis_response.get("message", "Retrieved user profile successfully"),
+#         error=dmis_response.get("error"),
+#     )
+
+===================================================================================================================
+
+# async def get_location_data(location_params: dict) -> dict:
+#     """
+#     Get location data from DMIS API.
+    
+#     Args:
+#         location_params: Parameters for location query
+        
+#     Returns:
+#         dict: Location data from DMIS API
+        
+#     Raises:
+#         HTTPException: If API call fails
+#     """
+#     try:
+#         # Get authentication token and user info
+#         login_response = await _get_dmis_token()
+        
+#         if not login_response.get("error") == False:
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Failed to authenticate with DMIS API"
+#             )
+        
+#         # Extract user info and villages from login response
+#         user_info = login_response.get("user", {})
+#         villages = login_response.get("villages", [])
+        
+#         # Filter villages based on location parameters if provided
+#         filtered_villages = villages
+        
+#         if location_params.get("query"):
+#             query = location_params["query"].lower()
+#             filtered_villages = [
+#                 village for village in villages
+#                 if query in village.get("name_en", "").lower() or 
+#                    query in village.get("name_kh", "").lower()
+#             ]
+        
+#         # Apply limit if specified
+#         limit = location_params.get("limit", 10)
+#         if limit and len(filtered_villages) > limit:
+#             filtered_villages = filtered_villages[:limit]
+        
+#         logging.info(f"Retrieved {len(filtered_villages)} villages from DMIS API")
+        
+#         return {
+#             "success": True,
+#             "data": filtered_villages,
+#             "message": f"Retrieved {len(filtered_villages)} villages",
+#             "total": len(filtered_villages),
+#             "user_info": user_info,
+#             "error": None
+#         }
+                
+#     except aiohttp.ClientError as e:
+#         await _handle_connection_error(e, SERVICE_DMIS_LOCATION, location_params)
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         await _handle_unexpected_error(e, SERVICE_DMIS_LOCATION, location_params)
