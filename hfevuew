@@ -1,0 +1,210 @@
+## Fetching Main-Record
+@router.get(
+    "/",
+    response_model=MainListResponse,
+    summary="Get all main records",
+    description="Retrieve all active main records with optional filtering"
+)
+async def get_main_records(
+    keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+    skip: int = 0,
+    limit: int = 100,
+    status_filter: AccountStatus | None = None,
+    gazetteer_code: str | None = None,
+):
+    # Validate user
+    await validate_user(keycloak_user.username, keycloak_user, db)
+    
+    try:
+        if status_filter:
+            records = await crud_main.get_by_status(db=db, status=status_filter, skip=skip, limit=limit)
+        elif gazetteer_code:
+            records = await crud_main.get_by_gazetteer_code(db=db, gazetteer_code=gazetteer_code, skip=skip, limit=limit)
+        else:
+            records = await crud_main.get_all_active(db=db, skip=skip, limit=limit)
+        
+        result = []
+        for record in records:
+            # Attach asset URLs
+            asset_urls = await attach_asset_urls(db, record.id, keycloak_user.token)
+
+            # try:
+            #     score_question_parsed = json.loads(record.score_question) if record.score_question else []
+            # except json.JSONDecodeError:
+            #     score_question_parsed = []
+
+            record_dict = MainRead(
+                id=record.id,
+                phone_number=record.phone_number,
+                gender=record.gender,
+                dob=record.dob,
+                eq_card=record.eq_card,
+                disability_date=record.disability_date,
+                gazetteer_code=record.gazetteer_code,
+                status=record.status,
+                notes=record.notes,
+                spid=record.spid,
+                latitude=record.latitude,
+                longitude=record.longitude,
+                remarks=record.remarks,
+                created_by=record.created_by,
+                updated_by=record.updated_by,
+                disability_code=record.disability_code,
+                family_name=record.family_name,
+                given_name=record.given_name,
+                family_name_en=record.family_name_en,
+                given_name_en=record.given_name_en,
+                disability_photo=asset_urls.get("disability_photo"),
+                disability_photo_infor=asset_urls.get("disability_photo_infor"),
+                idpoor_status=record.idpoor_status,
+                vacine_status=record.vacine_status,
+                vacine_date=record.vacine_date,
+                live_with_who=record.live_with_who,
+                reason_disability=record.reason_disability,
+                year_start_disability=record.year_start_disability,
+                submit_date=record.submit_date,
+                child_education_level=record.child_education_level,
+                is_educated=record.is_educated,
+                education_level=record.education_level,
+                have_income=record.have_income,
+                primary_job=record.primary_job,
+                find_job=record.find_job,
+                no_job_reason=record.no_job_reason,
+                no_job_reason_other=record.no_job_reason_other,
+                no_tvet=record.no_tvet_reason,
+                is_tvet=record.is_tvet,
+                daily_help=record.daily_help,
+                chronic_diseases=record.chronic_diseases,
+                score_status_live=record.score_status_live,
+                fingerprint=record.fingerprint,
+                family_book=asset_urls.get("family_book"),
+                residence_book=asset_urls.get("residence_book"),
+                national_id_card=asset_urls.get("national_id_card"),
+                equity_card=asset_urls.get("equity_card")
+            )
+
+            result.append(record_dict)
+    
+        return {
+            "error": False,
+            "message": "Successful fetching main records",
+            "data": result
+        }
+        
+    except Exception as e:
+        return {
+            "error": True,
+            "message": f"Failed to fetch main records: {str(e)}",
+            "data": []
+        }
+
+
+=================
+
+
+# Question-Answer Default
+    DEFAULT_QUESTION_ANSWER = [
+        {
+            "main_category_code": "Q1", 
+            "main_category_title": "ពិការភាពកាយសម្បទា", 
+            "sub_category_code": "Q1_1",
+            "sub_category_title": "ពិបាកធ្វើចលនាលើ",
+            "question_title": "តើកុមារអាចប្រើមេដៃចាប់កាន់ ឬលើកវត្ថុអ្វីមួយបានដែរឬទេ?",
+            "answer_title": "គ្មានបញ្ហា"
+        
+        },
+        {
+            "main_category_code": "Q1", 
+            "main_category_title": "ពិការភាពកាយសម្បទា", 
+            "sub_category_code": "Q1_1",
+            "sub_category_title": "ពិបាកធ្វើចលនាលើ",
+            "question_title": "តើកុមារអាចប្រើមេដៃចាប់កាន់ ឬលើកវត្ថុអ្វីមួយបានដែរឬទេ?",
+            "answer_title": "គ្មានបញ្ហា"
+        },
+    ]
+
+    questions_answers = DEFAULT_QUESTION_ANSWER
+
+
+main_dict["questions_answers"] = questions_answers
+
+
+
+========================================================
+
+## Fetching Detail Main-Record
+# @router.get(
+#     "/{main_record_id}",
+#     response_model=MainRecordResponse,
+#     summary="Get main record by ID",
+# )
+# async def get_main_record(
+#     main_record_id: int,
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+# ):
+#     # Step 1: Validate user access
+#     await validate_user(keycloak_user.username, keycloak_user, db)
+
+#     try:
+#         # Step 2: Fetch the main record from DB
+#         record = await crud_main.get(db=db, id=main_record_id)
+
+#         if not record or record.get("is_deleted"):
+#             return MainRecordResponse(
+#                 error=True,
+#                 message=f"Main record with ID {main_record_id} not found",
+#                 data=None
+#             )
+
+#         main_read = MainRead(**record)
+
+#         # Step 4: Attach MinIO asset URLs
+#         asset_urls = await attach_asset_urls(db, main_record_id, keycloak_user.token)
+        
+#         main_read.disability_photo_path = asset_urls.get("disability_photo")
+#         main_read.disability_photo_infor_path = asset_urls.get("disability_photo_infor")
+#         main_read.disability_photo_doc_path = asset_urls.get("disability_photo_doc")
+#         main_read.family_book = asset_urls.get("family_book")
+#         main_read.residence_book = asset_urls.get("residence_book")
+#         main_read.national_id_card = asset_urls.get("national_id_card")
+#         main_read.equity_card = asset_urls.get("equity_card")
+
+#         # Return successful response
+#         return MainRecordResponse(
+#             error=False,
+#             message="Successful for fetching detail main record",
+#             data=main_read
+#         )
+
+#     except Exception as e:
+#         logging.error(f"Error fetching main record {main_record_id}: {str(e)}", exc_info=True)
+        
+#         # Only expose detailed error in non-production
+#         error_msg = str(e)
+#         if settings.ENVIRONMENT == "production":
+#             error_msg = "Internal server error"
+
+#         return MainRecordResponse(
+#             error=True,
+#             message=f"Fail for fetching detail main record: {error_msg}",
+#             data=None
+#         )
+
+
+        # # --- Step 7: Map score_question to questions_answers ---
+        # if questions_from_frontend:
+        #     questions_answers = []
+        #     for q in questions_from_frontend:
+        #         questions_answers.append({
+        #             "main_category_code": q.get("category", "N/A"),
+        #             "main_category_title": q.get("category_title", "N/A"),
+        #             "sub_category_code": q.get("keyname", "N/A"),
+        #             "sub_category_title": q.get("sub_category_title", "N/A"),
+        #             "question_title": q.get("question_title", "N/A"),
+        #             "answer_title": q.get("answer_title", "N/A")
+        #         })
+        # else:
+        #     questions_answers = DEFAULT_QUESTION_ANSWER
+        
