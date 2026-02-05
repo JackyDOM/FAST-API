@@ -207,4 +207,125 @@ main_dict["questions_answers"] = questions_answers
         #         })
         # else:
         #     questions_answers = DEFAULT_QUESTION_ANSWER
-        
+
+
+
+
+==============================================================================================
+
+
+# @router.get(
+#     "/{main_record_id}",
+#     response_model=MainRecordResponse,
+#     summary="Get main record by ID",
+# )
+# async def get_main_record(
+#     main_record_id: int,
+#     keycloak_user: Annotated[UserInSignInKeyCloak, Depends(get_user_info)],
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+#     frontend_question_answers: Optional[List[QuestionAnswerOut]] = Body(None),
+# ):
+#     """
+#     Fetch a single main record by ID.
+
+#     questions_answers field behavior:
+#     1. If frontend sends data (`frontend_question_answers`), use it.
+#     2. Else, fetch from DB via `crud_question_answer`.
+#     3. If DB has nothing, fallback to DEFAULT_QUESTION_ANSWER.
+#     """
+#     # Step 1: Validate user
+#     await validate_user(keycloak_user.username, keycloak_user, db)
+
+#     # Step 2: Default Question Answers
+#     DEFAULT_QUESTION_ANSWER = []
+
+#     try:
+#         # Fetch main record
+#         record = await crud_main.get(db=db, id=main_record_id)
+#         if not record or record.get("is_deleted"):
+#             return MainRecordResponse(
+#                 error=True,
+#                 message=f"Main record with ID {main_record_id} not found",
+#                 data=None,
+#             )
+
+#         main_read = MainRead(**record)
+
+#         # Attach asset URLs
+#         asset_urls = await attach_asset_urls(db, main_record_id, keycloak_user.token)
+#         main_read.disability_photo_path = asset_urls.get("disability_photo")
+#         main_read.disability_photo_infor_path = asset_urls.get("disability_photo_infor")
+#         main_read.disability_photo_doc_path = asset_urls.get("disability_photo_doc")
+#         main_read.family_book = asset_urls.get("family_book")
+#         main_read.residence_book = asset_urls.get("residence_book")
+#         main_read.national_id_card = asset_urls.get("national_id_card")
+#         main_read.equity_card = asset_urls.get("equity_card")
+
+#         # Handle questions_answers
+#         if frontend_question_answers:
+#             # If frontend sends its own questions_answers data, use it.
+#             main_read.questions_answers = frontend_question_answers
+#         else:
+#             question_answers_db = await crud_question_answer.fetch_for_main(
+#                 db=db,
+#                 main_id=main_record_id,
+#             )
+#             if question_answers_db:
+#                 main_read.questions_answers = [
+#                     QuestionAnswerOut(
+#                         main_category_code=qa.category_code,
+#                         main_category_title=category_title,
+#                         sub_category_code=qa.question_code,
+#                         sub_category_title=category_title,
+#                         question_title=question_title,
+#                         answer_title=answer_title,
+#                     )
+#                     for qa, category_title, question_title, answer_title in question_answers_db
+#                 ]
+#             else:
+#                 # If database has nothing, use the default hardcoded questions
+#                 main_read.questions_answers = [QuestionAnswerOut(**qa) for qa in DEFAULT_QUESTION_ANSWER]
+
+#         # Return response
+#         return MainRecordResponse(
+#             error=False,
+#             message="Successful for fetching detail main record",
+#             data=main_read,
+#         )
+
+#     except Exception as e:
+#         logging.error(f"Error fetching main record {main_record_id}: {str(e)}", exc_info=True)
+#         error_msg = "Internal server error" if settings.ENVIRONMENT == "production" else str(e)
+#         return MainRecordResponse(
+#             error=True,
+#             message=f"Fail for fetching detail main record: {error_msg}",
+#             data=None,
+#         )
+
+
+
+==================================
+
+ # async def fetch_for_main(
+    #     self,
+    #     db: AsyncSession,
+    #     main_id: int,
+    # ):
+    #     """Fetch all question-answer links for a main record with related titles."""
+    #     stmt = (
+    #         select(
+    #             QuestionAnswer,
+    #             DisabilityType.title.label("category_title"),
+    #             Question.question.label("question_title"), 
+    #             Answer.answer.label("answer_title"), 
+    #         )
+    #         .join(DisabilityType, DisabilityType.code == QuestionAnswer.category_code)
+    #         .join(Question, Question.unique_code == QuestionAnswer.question_code)  
+    #         .join(Answer, Answer.unique_code == QuestionAnswer.answer_code)  
+    #         .where(
+    #             QuestionAnswer.main_id == main_id,
+    #             QuestionAnswer.is_deleted == False,
+    #         )
+    #     )
+    #     result = await db.execute(stmt)
+    #     return result.all()
