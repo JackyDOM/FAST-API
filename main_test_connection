@@ -1,0 +1,65 @@
+import asyncio
+import os
+from pathlib import Path
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
+from asyncpg.exceptions import InvalidPasswordError
+from dotenv import load_dotenv
+from typing import Optional
+
+# ───────── Load .env from its location ─────────
+dotenv_path = Path("C:/Users/MSI/Documents/New folder/family-package/src/.env")
+if not dotenv_path.exists():
+    raise FileNotFoundError(f".env file not found at {dotenv_path}")
+load_dotenv(dotenv_path=dotenv_path)
+
+# ───────── Helper to strip quotes ─────────
+def strip_quotes(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return value.strip('"').strip("'")
+
+# ───────── Get environment variables ─────────
+POSTGRES_HOST = "localhost"
+POSTGRES_PORT = int(strip_quotes(os.getenv("POSTGRES_PORT")))
+POSTGRES_USER = strip_quotes(os.getenv("POSTGRES_USER"))
+POSTGRES_PASSWORD_RAW = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_PASSWORD = strip_quotes(POSTGRES_PASSWORD_RAW)
+POSTGRES_DB = strip_quotes(os.getenv("POSTGRES_DB"))
+
+# ───────── Print debug info ─────────
+print("DEBUG: Raw password from .env:", POSTGRES_PASSWORD_RAW)
+print("DEBUG: Password used for connection:", POSTGRES_PASSWORD)
+print("DEBUG: POSTGRES_HOST:", POSTGRES_HOST)
+print("DEBUG: POSTGRES_PORT:", POSTGRES_PORT)
+print("DEBUG: POSTGRES_USER:", POSTGRES_USER)
+print("DEBUG: POSTGRES_DB:", POSTGRES_DB)
+
+# ───────── Sanity check ─────────
+if not POSTGRES_HOST or not POSTGRES_USER or not POSTGRES_PASSWORD or not POSTGRES_DB:
+    raise ValueError("❌ Some DB environment variables are missing or not loaded!")
+
+# ───────── Build database URL ─────────
+DATABASE_URL = f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+engine = create_async_engine(DATABASE_URL, echo=True)
+
+# ───────── Test connection ─────────
+async def test_connection():
+    try:
+        print(f"Trying to connect to {POSTGRES_HOST}:{POSTGRES_PORT} with user '{POSTGRES_USER}'")
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SELECT 1"))
+            print("✅ Connection successful!")
+            print("Result:", result.scalar())
+    except InvalidPasswordError as e:
+        print("❌ Connection failed: Invalid password!")
+        print("PostgreSQL Error Message:", e)
+    except Exception as e:
+        print("❌ Connection failed:", e)
+    finally:
+        # Properly dispose the engine to avoid EventLoop closed warning
+        await engine.dispose()
+
+# ───────── Run the async test ─────────
+if __name__ == "__main__":
+    asyncio.run(test_connection())
